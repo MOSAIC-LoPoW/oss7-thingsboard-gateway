@@ -2,6 +2,7 @@
 
 import argparse
 
+from datetime import datetime
 import jsonpickle
 import serial
 import time
@@ -24,8 +25,8 @@ class Gateway:
     self.bridge_count = 0
     self.next_report = 0
     self.mq = None
-    self.mqtt_topic_incoming = ""
-    self.mqtt_topic_outgoing = ""
+    self.mqtt_topic_incoming_alp = ""
+    self.mqtt_topic_outgoing_alp = ""
     self.connected_to_mqtt = False
 
     self.config = argparser.parse_args()
@@ -34,7 +35,21 @@ class Gateway:
 
   def on_command_received(self, cmd):
     print("Command received: {}".format(cmd))
-    self.publish_to_mqtt(jsonpickle.encode(cmd))
+
+    # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
+    # so pass it as an opaque BLOB for parsing in backend
+    self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.encode(cmd))
+
+    # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
+    if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
+      interface_status = cmd.interface_status.operand.interface_status
+      node_id = '{:x}'.format(interface_status.addressee.id)
+      self.publish_to_topic("/link-budget", jsonpickle.json.dumps({
+        "gateway": self.modem.uid,
+        "node": node_id,
+        "link_budget": interface_status.link_budget,
+        "timestamp": str(datetime.now())
+      }))
 
 
   def connect_to_mqtt(self):
@@ -43,30 +58,32 @@ class Gateway:
     self.mq = mqtt.Client("", True, None, mqtt.MQTTv31)
     self.mq.on_connect = self.on_mqtt_connect
     self.mq.on_message = self.on_mqtt_message
-    self.mqtt_topic_incoming = "/DASH7/incoming/{}".format(self.modem.uid)
-    self.mqtt_topic_outgoing = "/DASH7/outgoing/{}".format(self.modem.uid)
-    self.mq.connect(self.config.broker, 1883, 60)
+    self.mqtt_topic_incoming_alp = "/DASH7/incoming/{}".format(self.modem.uid)
+    self.mqtt_topic_outgoing_alp = "/DASH7/outgoing/{}".format(self.modem.uid)
+    self.mq.connect(self.config.broker, 1882, 60)
     self.mq.loop_start()
     while not self.connected_to_mqtt: pass  # busy wait until connected
     print("Connected to MQTT broker on {}, sending to topic {} and subscribed to topic {}".format(
       self.config.broker,
-      self.mqtt_topic_incoming,
-      self.mqtt_topic_outgoing
+      self.mqtt_topic_incoming_alp,
+      self.mqtt_topic_outgoing_alp
     ))
 
   def on_mqtt_connect(self, client, config, flags, rc):
-    self.mq.subscribe(self.mqtt_topic_outgoing)
+    self.mq.subscribe(self.mqtt_topic_outgoing_alp)
     self.connected_to_mqtt = True
 
   def on_mqtt_message(self, client, config, msg):
     print("on_message")  # TODO
 
-  def publish_to_mqtt(self, msg):
+  def publish_to_topic(self, topic, msg):
     if not self.connected_to_mqtt:
       print("not connected to MQTT, skipping")
       return
 
-    self.mq.publish(self.mqtt_topic_incoming, msg)
+    self.mq.publish(topic, msg)
+
+
 
   def __del__(self):
     try:

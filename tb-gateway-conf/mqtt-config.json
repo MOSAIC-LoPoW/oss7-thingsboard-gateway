@@ -2,7 +2,7 @@
   "brokers": [
     {
       "host": "localhost",
-      "port": 1883,
+      "port": 1882,
       "ssl": false,
       "retryInterval": 3000,
       "credentials": {
@@ -10,16 +10,16 @@
       },
       "mapping": [
         {
-          "topicFilter": "/nodes/#",
+          "topicFilter": "/link-budget",
           "converter": {
             "type": "json",
             "filterExpression": "",
-            "deviceNameTopicExpression": "(?<=nodes\/)(.*?)(?=\/files)",
+            "deviceNameJsonExpression": "${$.node}",
             "timeseries": [
               {
                 "type": "double",
-                "key": "rssi",
-                "value": "${$.rssi}"
+                "key": "link_budget",
+                "value": "${$.link_budget}"
               }
             ]
           }
