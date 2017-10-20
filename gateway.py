@@ -60,7 +60,7 @@ class Gateway:
     self.mq.on_message = self.on_mqtt_message
     self.mqtt_topic_incoming_alp = "/DASH7/incoming/{}".format(self.modem.uid)
     self.mqtt_topic_outgoing_alp = "/DASH7/outgoing/{}".format(self.modem.uid)
-    self.mq.connect(self.config.broker, 1882, 60)
+    self.mq.connect(self.config.broker, 1883, 60)
     self.mq.loop_start()
     while not self.connected_to_mqtt: pass  # busy wait until connected
     print("Connected to MQTT broker on {}, sending to topic {} and subscribed to topic {}".format(
