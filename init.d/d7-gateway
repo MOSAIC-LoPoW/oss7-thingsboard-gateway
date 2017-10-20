@@ -1,0 +1,33 @@
+#! /bin/sh
+# /etc/init.d/d7-gateway
+
+### BEGIN INIT INFO
+# Provides:          d7-gateway
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Starts oss7-thingsboard-gateway
+# Description:       Starts oss7-thingsboard-gateway
+### END INIT INFO
+
+# If you want a command to always run, put it here
+
+# Carry out specific functions when asked to by the system
+case "$1" in
+  start)
+    echo "Starting D7 gateway"
+    cd /home/pi/oss7-thingsboard-gateway/
+    (PYTHONPATH="lib/pyd7a" python2 gateway.py -d /dev/ttyACM0 > /var/log/d7-gateway.log) &
+    ;;
+  stop)
+    echo "Stopping D7 gateway"
+    pkill -9 -f gateway.py
+    ;;
+  *)
+    echo "Usage: /etc/init.d/d7-gateway {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0 
