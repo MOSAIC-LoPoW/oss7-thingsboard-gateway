@@ -39,3 +39,9 @@ Command received: Command with tag 25 (executing)
     interface status: interface-id=215, status=unicast=False, nls=False, retry=False, missed=False, fifo_token=190, rx_level=24, seq_nr=0, target_rx_level=80, addressee=ac=1, id_type=IdType.UID, id=0x42373436001a0042L, response_to=exp=0 mant0, link_budget=34, channel_header=coding=ChannelCoding.PN9, class=ChannelClass.NORMAL_RATE, band=ChannelBand.BAND_868, channel_index=0
 ```
 - the sensor device as well as the gateway modem device should appear in the `devices` tab in the ThingsBoard web interface, and the telemetery data is recorded and can be visualized
+- make sure the gateway is started on boot using the init script:
+```
+$ sudo ln -s /home/pi/oss7-thingsboard-gateway/init.d/d7-gateway /etc/init.d/d7-gateway
+$ sudo update-rc.d d7-gateway defaults
+$ service d7-gateway start
+```
