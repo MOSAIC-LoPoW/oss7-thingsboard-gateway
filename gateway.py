@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
+import socket
+import subprocess
 
 from datetime import datetime
 import jsonpickle
@@ -10,6 +12,8 @@ import time
 import paho.mqtt.client as mqtt
 import signal
 
+from d7a.alp.command import Command
+from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
 
 
@@ -32,6 +36,20 @@ class Gateway:
     self.config = argparser.parse_args()
     self.modem = Modem(self.config.device, self.config.rate, self.on_command_received, show_logging=self.config.verbose)
     self.connect_to_mqtt()
+
+    # update attribute containing git rev so we can track revision at TB platform
+    git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
+    ip = self.get_ip()
+    # TODO ideally this should be associated with the GW device itself, not with the modem in the GW
+    # not clear how to do this using TB-GW
+    self.publish_to_topic("/gateway-info", jsonpickle.json.dumps({
+      "git-rev": git_sha,
+      "ip": ip,
+      "device": self.modem.uid
+    }))
+
+    print("Running on {} with git rev {}".format(ip, git_sha))
+
 
   def on_command_received(self, cmd):
     print("Command received: {}".format(cmd))
@@ -118,6 +136,18 @@ class Gateway:
         print("bridged %s messages" % str(self.bridge_count))
         self.bridge_count = 0
       self.next_report = time.time() + 15  # report at most every 15 seconds
+
+  def get_ip(self):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+      # doesn't even have to be reachable
+      s.connect(('10.255.255.255', 1))
+      IP = s.getsockname()[0]
+    except:
+      IP = '127.0.0.1'
+    finally:
+      s.close()
+    return IP
 
 
 if __name__ == "__main__":

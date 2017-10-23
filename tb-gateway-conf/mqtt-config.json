@@ -39,27 +39,32 @@
               }
             ]
           }
+        },
+        {
+          "topicFilter": "/gateway-info",
+          "converter": {
+            "type": "json",
+            "filterExpression": "",
+            "deviceNameJsonExpression": "${$.device}",
+            "timeout": 60000,
+            "attributes": [
+              {
+                "type": "string",
+                "key": "git-rev",
+                "value": "${$.git-rev}"
+              },
+              {
+                "type": "string",
+                "key": "ip",
+                "value": "${$.ip}"
+              }
+            ]
+          }
         }
       ],
       "connectRequests": [
-        {
-          "topicFilter": "sensors/connect",
-          "deviceNameJsonExpression": "${$.serialNumber}"
-        },
-        {
-          "topicFilter": "sensor/+/connect",
-          "deviceNameTopicExpression": "(?<=sensor\/)(.*?)(?=\/connect)"
-        }
       ],
       "disconnectRequests": [
-        {
-          "topicFilter": "sensors/disconnect",
-          "deviceNameJsonExpression": "${$.serialNumber}"
-        },
-        {
-          "topicFilter": "sensor/+/disconnect",
-          "deviceNameTopicExpression": "(?<=sensor\/)(.*?)(?=\/disconnect)"
-        }
       ],
       "attributeRequests": [
         {
