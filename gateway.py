@@ -13,6 +13,8 @@ import paho.mqtt.client as mqtt
 import signal
 
 from d7a.alp.command import Command
+from d7a.alp.operations.responses import ReturnFileData
+from d7a.system_files.system_file_ids import SystemFileIds
 from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
 
@@ -50,6 +52,14 @@ class Gateway:
 
     print("Running on {} with git rev {}".format(ip, git_sha))
 
+    # read all system files on the local node to store as attributes on TB
+    print("Reading all system files ...")
+    for file in SystemFiles().files.values():
+      self.modem.execute_command_async(
+        Command.create_with_read_file_action_system_file(file)
+      )
+
+
 
   def on_command_received(self, cmd):
     print("Command received: {}".format(cmd))
@@ -58,6 +68,7 @@ class Gateway:
     # so pass it as an opaque BLOB for parsing in backend
     self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.encode(cmd))
 
+    node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
     # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
     if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
       interface_status = cmd.interface_status.operand.interface_status
@@ -68,6 +79,27 @@ class Gateway:
         "link_budget": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
+
+    # store returned file data as attribute on the device
+    for action in cmd.actions:
+      if type(action.operation) is ReturnFileData:
+        data = ""
+        if action.operation.file_data_parsed is None:
+          # unknown file content, just transmit raw data
+          data = jsonpickle.encode(action.operand)
+        else:
+          # for known system files we transmit the parsed data
+          data = jsonpickle.encode(action.operation.file_data_parsed)
+
+        filename = "File {}".format(action.operand.offset.id)
+        if action.operation.systemfile_type != None:
+          filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
+
+        self.publish_to_topic("/filecontent", jsonpickle.json.dumps({
+          "device": node_id,
+          "file-id": filename,
+          "file-data": data
+        }))
 
 
   def connect_to_mqtt(self):

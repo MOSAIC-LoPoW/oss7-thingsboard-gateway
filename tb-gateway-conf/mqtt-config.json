@@ -60,7 +60,24 @@
               }
             ]
           }
+        },
+        {
+          "topicFilter": "/filecontent",
+          "converter": {
+            "type": "json",
+            "filterExpression": "",
+            "deviceNameJsonExpression": "${$.device}",
+            "timeout": 60000,
+            "attributes": [
+              {
+                "type": "string",
+                "key": "${$.file-id}",
+                "value": "${$.file-data}"
+              }
+            ]
+          }
         }
+
       ],
       "connectRequests": [
       ],
