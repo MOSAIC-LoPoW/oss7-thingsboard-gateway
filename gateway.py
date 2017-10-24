@@ -63,6 +63,9 @@ class Gateway:
 
   def on_command_received(self, cmd):
     print("Command received: {}".format(cmd))
+    if not self.connected_to_mqtt:
+      print("Not connected to MQTT, skipping")
+      return
 
     # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
     # so pass it as an opaque BLOB for parsing in backend
