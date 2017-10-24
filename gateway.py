@@ -66,7 +66,7 @@ class Gateway:
 
     # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
     # so pass it as an opaque BLOB for parsing in backend
-    self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.encode(cmd))
+    self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.json.dumps({'alp_command': jsonpickle.encode(cmd)}))
 
     node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
     # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB

@@ -31,11 +31,11 @@
             "filterExpression": "",
             "deviceNameTopicExpression": "(?<=\/DASH7\/incoming\/)(.*?[A-Za-z0-9\t .]+)",
             "timeout": 60000,
-            "timeseries": [
+            "attributes": [
               {
                 "type": "string",
-                "key": "alp_command",
-                "value": "${$}"
+                "key": "last_received_alp_command",
+                "value": "${$.alp_command}"
               }
             ]
           }
