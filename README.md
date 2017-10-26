@@ -1,7 +1,7 @@
 # Introduction
 
 The goal of this project is to integrate a [DASH7](http://www.dash7-alliance.org/) gateway running [OSS-7](http://mosaic-lopow.github.io/dash7-ap-open-source-stack/)
- with the ThingsBoard IoT Gateway and ThingsBoard platform. This allows to use the Thingsboard platform for data collection, visualization and device management
+ with the [ThingsBoard IoT Gateway](https://github.com/thingsboard/thingsboard-gateway) and [ThingsBoard](https://github.com/thingsboard/thingsboard) platform. This allows to use the Thingsboard platform for data collection, visualization and device management
  of the GW, but also of the DASH7 nodes in the network. All nodes can be visualized on a dashboard with their link budget, and file data received from nodes is stored 
  inside the platform resulting in a digital twin.
 
@@ -12,11 +12,7 @@ This also assumes that you have a ThingsBoard instance running somewhere where y
 See the Thingsboard [getting started guide](https://thingsboard.io/docs/getting-started-guides/helloworld/)
 
 - clone the repository, including the submodules: `$ git clone --recurse-submodules https://github.com/MOSAIC-LoPoW/oss7-thingsboard-gateway.git`
-- make sure you have all the dependencies of pyd7a installed:
-    ```
-    $ cd lib/pyd7a
-    $ sudo pip install -r requirements.txt
-    ```
+- install the requirements: `$ sudo pip2 install -r requirements.txt`
 - install a local MQTT broker: `$ sudo aptitude install mosquitto`
 - install thingsboard-gateway on your pi as described [here](https://thingsboard.io/docs/iot-gateway/install/rpi/)
 - in the `/etc/tb-gateway/conf/tb-gateway.yml` file set the mqtt enabled option to true, since we will be integrating with thingsboard-gateway using MQTT.
