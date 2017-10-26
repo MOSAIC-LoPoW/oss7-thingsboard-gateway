@@ -150,6 +150,8 @@ class Gateway:
 
       self.modem.execute_command_async(cmd)
       print("Executed ALP command through RPC")
+
+      # TODO when the command is writing local files we could read them again automatically afterwards, to make sure the digital twin is updated
     except Exception as e:
       print("Could not deserialize: %s" % e)
 
