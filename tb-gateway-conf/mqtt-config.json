@@ -80,6 +80,10 @@
 
       ],
       "connectRequests": [
+        {
+          "topicFilter": "sensors/connect",
+          "deviceNameJsonExpression": "${$.serialNumber}"
+        }
       ],
       "disconnectRequests": [
       ],

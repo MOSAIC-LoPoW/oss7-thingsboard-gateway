@@ -52,6 +52,14 @@ class Gateway:
       "device": self.modem.uid
     }))
 
+    # make sure TB knows the modem device is connected. TB considers the device connected as well when there is regular
+    # telemetry data. This is fine for remote nodes which will be auto connected an disconnected in this way. But for the
+    # node in the gateway we do it explicitly to make sure it always is 'online' even when there is no telemetry to be transmitted,
+    # so that we can reach it over RPC
+    self.publish_to_topic("sensors/connect", jsonpickle.json.dumps({
+      "serialNumber": self.modem.uid
+    }))
+
     print("Running on {} with git rev {}".format(ip, git_sha))
 
     # read all system files on the local node to store as attributes on TB
