@@ -5,6 +5,8 @@ import socket
 import subprocess
 
 from datetime import datetime
+from pprint import pprint
+
 import jsonpickle
 import serial
 import time
@@ -124,10 +126,32 @@ class Gateway:
 
   def on_mqtt_connect(self, client, config, flags, rc):
     self.mq.subscribe(self.mqtt_topic_outgoing_alp)
+    self.mq.subscribe("sensor/#")
     self.connected_to_mqtt = True
 
   def on_mqtt_message(self, client, config, msg):
-    print("on_message")  # TODO
+    topic_parts = msg.topic.split('/')
+    method = topic_parts[3]
+    uid = topic_parts[1]
+    request_id = topic_parts[4]
+    print("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
+    if uid != self.modem.uid:
+      print("RPC command not for this modem ({}), skipping", self.modem.uid)
+      return
+
+    if method != "execute-alp-async":
+      print("RPC method not supported, skipping")
+      return
+
+    try:
+      cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
+      print("Received command through RPC:")
+      print(cmd)
+
+      self.modem.execute_command_async(cmd)
+      print("Executed ALP command through RPC")
+    except Exception as e:
+      print("Could not deserialize: %s" % e)
 
   def publish_to_topic(self, topic, msg):
     if not self.connected_to_mqtt:
