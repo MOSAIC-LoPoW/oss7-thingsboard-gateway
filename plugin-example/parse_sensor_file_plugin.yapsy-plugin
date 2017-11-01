@@ -1,0 +1,3 @@
+[Core]
+Name = Parse sensor file
+Module = parse_sensor_file_plugin

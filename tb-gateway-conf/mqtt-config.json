@@ -10,16 +10,16 @@
       },
       "mapping": [
         {
-          "topicFilter": "/link-budget",
+          "topicFilter": "/parsed",
           "converter": {
             "type": "json",
             "filterExpression": "",
-            "deviceNameJsonExpression": "${$.node}",
+            "deviceNameJsonExpression": "${$.device}",
             "timeseries": [
               {
                 "type": "double",
-                "key": "link_budget",
-                "value": "${$.link_budget}"
+                "key": "${$.attribute_name}",
+                "value": "${$.value}"
               }
             ]
           }

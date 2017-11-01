@@ -5,7 +5,6 @@ import socket
 import subprocess
 
 from datetime import datetime
-from pprint import pprint
 
 import jsonpickle
 import serial
@@ -13,6 +12,8 @@ import time
 
 import paho.mqtt.client as mqtt
 import signal
+
+from yapsy.PluginManager import PluginManagerSingleton
 
 from d7a.alp.command import Command
 from d7a.alp.operations.responses import ReturnFileData
@@ -30,6 +31,8 @@ class Gateway:
     argparser.add_argument("-v", "--verbose", help="verbose", default=False, action="store_true")
     argparser.add_argument("-b", "--broker", help="mqtt broker hostname",
                            default="localhost")
+    argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
+                           default="")
     self.bridge_count = 0
     self.next_report = 0
     self.mq = None
@@ -38,6 +41,7 @@ class Gateway:
     self.connected_to_mqtt = False
 
     self.config = argparser.parse_args()
+    self.load_plugins(self.config.plugin_path)
     self.modem = Modem(self.config.device, self.config.rate, self.on_command_received, show_logging=self.config.verbose)
     self.connect_to_mqtt()
 
@@ -69,27 +73,34 @@ class Gateway:
         Command.create_with_read_file_action_system_file(file)
       )
 
+  def load_plugins(self, plugin_path):
+    manager = PluginManagerSingleton.get()
+    manager.setPluginPlaces([plugin_path])
+    manager.collectPlugins()
 
+    for plugin in manager.getAllPlugins():
+        print("Loading plugin '%s'" % plugin.name)
 
   def on_command_received(self, cmd):
     print("Command received: {}".format(cmd))
-    if not self.connected_to_mqtt:
-      print("Not connected to MQTT, skipping")
-      return
+    # if not self.connected_to_mqtt:
+    #   print("Not connected to MQTT, skipping")
+    #   return
 
     # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
     # so pass it as an opaque BLOB for parsing in backend
     self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.json.dumps({'alp_command': jsonpickle.encode(cmd)}))
 
-    node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
+    node_id = 0#self.modem.uid # overwritten below with remote node ID when received over D7 interface
     # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
     if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
       interface_status = cmd.interface_status.operand.interface_status
       node_id = '{:x}'.format(interface_status.addressee.id)
-      self.publish_to_topic("/link-budget", jsonpickle.json.dumps({
+      self.publish_to_topic("/parsed", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
-        "node": node_id,
-        "link_budget": interface_status.link_budget,
+        "device": node_id,
+        "attribute_name": "link_budget",
+        "value": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
 
@@ -97,22 +108,33 @@ class Gateway:
     for action in cmd.actions:
       if type(action.operation) is ReturnFileData:
         data = ""
-        if action.operation.file_data_parsed is None:
-          # unknown file content, just transmit raw data
-          data = jsonpickle.encode(action.operand)
-        else:
+        if action.operation.file_data_parsed is not None:
           # for known system files we transmit the parsed data
           data = jsonpickle.encode(action.operation.file_data_parsed)
+        else:
+          # try if plugin can parse this file
+          parsed_by_plugin = False
+          for plugin in PluginManagerSingleton.get().getAllPlugins():
+            attribute_name, value = plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data)
+            if attribute_name is not None:
+              parsed_by_plugin = True
+              self.publish_to_topic("/parsed", jsonpickle.json.dumps({
+                "device": node_id,
+                "attribute_name": attribute_name,
+                "value": value,
+              }))
+          if not parsed_by_plugin:
+            # unknown file content, just transmit raw data
+            data = jsonpickle.encode(action.operand)
+            filename = "File {}".format(action.operand.offset.id)
+            if action.operation.systemfile_type != None:
+              filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
 
-        filename = "File {}".format(action.operand.offset.id)
-        if action.operation.systemfile_type != None:
-          filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
-
-        self.publish_to_topic("/filecontent", jsonpickle.json.dumps({
-          "device": node_id,
-          "file-id": filename,
-          "file-data": data
-        }))
+            self.publish_to_topic("/filecontent", jsonpickle.json.dumps({
+              "device": node_id,
+              "file-id": filename,
+              "file-data": data
+            }))
 
 
   def connect_to_mqtt(self):
