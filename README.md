@@ -56,7 +56,7 @@ To enable this we will remove the file from `/etc/tb-gateway/conf/` and a link t
 
 # Plug-ins
 
-The gateway can be extended with plug-ins which enable parsing the raw file data into a readable attribute name and value,
+The gateway can be extended with plug-ins which enable parsing the raw file data into a (set of) readable attribute name and value,
 which can be visualized directly in the TB platform. An example is present in `plugin-example` and this can be enabled by starting the gateway
-by supplying `-p plugin-example` where this is refering to the path containing the plug-in. The plug-in path can be stored outside of the
+by supplying `-p plugin-example` where this is referring to the path containing the plug-in. The plug-in path can be stored outside of the
  tree of this project, to keep things separated. 

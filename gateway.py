@@ -115,8 +115,7 @@ class Gateway:
           # try if plugin can parse this file
           parsed_by_plugin = False
           for plugin in PluginManagerSingleton.get().getAllPlugins():
-            attribute_name, value = plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data)
-            if attribute_name is not None:
+            for attribute_name, value in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data):
               parsed_by_plugin = True
               self.publish_to_topic("/parsed", jsonpickle.json.dumps({
                 "device": node_id,
