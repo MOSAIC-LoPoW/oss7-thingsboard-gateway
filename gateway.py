@@ -21,6 +21,7 @@ from d7a.system_files.system_file_ids import SystemFileIds
 from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
 
+import logging
 
 class Gateway:
   def __init__(self):
@@ -33,16 +34,23 @@ class Gateway:
                            default="localhost")
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
                            default="")
+
+    self.log = logging.getLogger()
+    formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    self.log.addHandler(handler)
+    self.log.setLevel(logging.DEBUG)
+
     self.bridge_count = 0
     self.next_report = 0
     self.mq = None
     self.mqtt_topic_incoming_alp = ""
-    self.mqtt_topic_outgoing_alp = ""
     self.connected_to_mqtt = False
 
     self.config = argparser.parse_args()
     self.load_plugins(self.config.plugin_path)
-    self.modem = Modem(self.config.device, self.config.rate, self.on_command_received, show_logging=self.config.verbose)
+    self.modem = Modem(self.config.device, self.config.rate, self.on_command_received)
     self.connect_to_mqtt()
 
     # update attribute containing git rev so we can track revision at TB platform
@@ -64,10 +72,10 @@ class Gateway:
       "serialNumber": self.modem.uid
     }))
 
-    print("Running on {} with git rev {}".format(ip, git_sha))
+    self.log.info("Running on {} with git rev {}".format(ip, git_sha))
 
     # read all system files on the local node to store as attributes on TB
-    print("Reading all system files ...")
+    self.log.info("Reading all system files ...")
     for file in SystemFiles().files.values():
       self.modem.execute_command_async(
         Command.create_with_read_file_action_system_file(file)
@@ -79,19 +87,19 @@ class Gateway:
     manager.collectPlugins()
 
     for plugin in manager.getAllPlugins():
-        print("Loading plugin '%s'" % plugin.name)
+      self.log.info("Loading plugin '%s'" % plugin.name)
 
   def on_command_received(self, cmd):
-    print("Command received: {}".format(cmd))
-    # if not self.connected_to_mqtt:
-    #   print("Not connected to MQTT, skipping")
-    #   return
+    self.log.info("Command received: {}".format(cmd))
+    if not self.connected_to_mqtt:
+      self.log.warning("Not connected to MQTT, skipping")
+      return
 
     # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
     # so pass it as an opaque BLOB for parsing in backend
     self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.json.dumps({'alp_command': jsonpickle.encode(cmd)}))
 
-    node_id = 0#self.modem.uid # overwritten below with remote node ID when received over D7 interface
+    node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
     # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
     if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
       interface_status = cmd.interface_status.operand.interface_status
@@ -138,23 +146,16 @@ class Gateway:
 
   def connect_to_mqtt(self):
     self.connected_to_mqtt = False
-
     self.mq = mqtt.Client("", True, None, mqtt.MQTTv31)
+    self.mqtt_topic_incoming_alp = "/DASH7/incoming/{}".format(self.modem.uid)
     self.mq.on_connect = self.on_mqtt_connect
     self.mq.on_message = self.on_mqtt_message
-    self.mqtt_topic_incoming_alp = "/DASH7/incoming/{}".format(self.modem.uid)
-    self.mqtt_topic_outgoing_alp = "/DASH7/outgoing/{}".format(self.modem.uid)
     self.mq.connect(self.config.broker, 1883, 60)
     self.mq.loop_start()
     while not self.connected_to_mqtt: pass  # busy wait until connected
-    print("Connected to MQTT broker on {}, sending to topic {} and subscribed to topic {}".format(
-      self.config.broker,
-      self.mqtt_topic_incoming_alp,
-      self.mqtt_topic_outgoing_alp
-    ))
+    self.log.info("Connected to MQTT broker on {}".format(self.config.broker))
 
   def on_mqtt_connect(self, client, config, flags, rc):
-    self.mq.subscribe(self.mqtt_topic_outgoing_alp)
     self.mq.subscribe("sensor/#")
     self.connected_to_mqtt = True
 
@@ -163,30 +164,29 @@ class Gateway:
     method = topic_parts[3]
     uid = topic_parts[1]
     request_id = topic_parts[4]
-    print("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
+    self.log.info("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
     if uid != self.modem.uid:
-      print("RPC command not for this modem ({}), skipping", self.modem.uid)
+      self.log.info("RPC command not for this modem ({}), skipping", self.modem.uid)
       return
 
     if method != "execute-alp-async":
-      print("RPC method not supported, skipping")
+      self.log.info("RPC method not supported, skipping")
       return
 
     try:
       cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
-      print("Received command through RPC:")
-      print(cmd)
+      self.log.info("Received command through RPC: %s" % cmd)
 
       self.modem.execute_command_async(cmd)
-      print("Executed ALP command through RPC")
+      self.log.info("Executed ALP command through RPC")
 
       # TODO when the command is writing local files we could read them again automatically afterwards, to make sure the digital twin is updated
     except Exception as e:
-      print("Could not deserialize: %s" % e)
+      self.log.exception("Could not deserialize: %s" % e)
 
   def publish_to_topic(self, topic, msg):
     if not self.connected_to_mqtt:
-      print("not connected to MQTT, skipping")
+      self.log.warning("not connected to MQTT, skipping")
       return
 
     self.mq.publish(topic, msg)
@@ -201,18 +201,18 @@ class Gateway:
       pass
 
   def run(self):
-    print("Started")
+    self.log.info("Started")
     keep_running = True
     while keep_running:
       try:
         signal.pause()
       except serial.SerialException:
         time.sleep(1)
-        print("resetting serial connection...")
+        self.log.warning("resetting serial connection...")
         self.setup_modem()
         return
       except KeyboardInterrupt:
-        print("received KeyboardInterrupt... stopping processing")
+        self.log.info("received KeyboardInterrupt... stopping processing")
         keep_running = False
 
       self.report_stats()
@@ -223,7 +223,7 @@ class Gateway:
   def report_stats(self):
     if self.next_report < time.time():
       if self.bridge_count > 0:
-        print("bridged %s messages" % str(self.bridge_count))
+        self.log.info("bridged %s messages" % str(self.bridge_count))
         self.bridge_count = 0
       self.next_report = time.time() + 15  # report at most every 15 seconds
 
