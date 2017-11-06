@@ -34,13 +34,8 @@ class Gateway:
                            default="localhost")
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
                            default="")
-
-    self.log = logging.getLogger()
-    formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    self.log.addHandler(handler)
-    self.log.setLevel(logging.DEBUG)
+    argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
+                           default="")
 
     self.bridge_count = 0
     self.next_report = 0
@@ -49,7 +44,23 @@ class Gateway:
     self.connected_to_mqtt = False
 
     self.config = argparser.parse_args()
-    self.load_plugins(self.config.plugin_path)
+
+    self.log = logging.getLogger()
+    formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    if self.config.logfile == "":
+      handler = logging.StreamHandler()
+    else:
+      handler = logging.FileHandler(self.config.logfile)
+
+    handler.setFormatter(formatter)
+    self.log.addHandler(handler)
+    self.log.setLevel(logging.INFO)
+    if self.config.verbose:
+      self.log.setLevel(logging.DEBUG)
+
+    if self.config.plugin_path != "":
+      self.load_plugins(self.config.plugin_path)
+
     self.modem = Modem(self.config.device, self.config.rate, self.on_command_received)
     self.connect_to_mqtt()
 

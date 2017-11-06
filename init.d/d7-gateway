@@ -18,7 +18,7 @@ case "$1" in
   start)
     echo "Starting D7 gateway"
     cd /home/pi/oss7-thingsboard-gateway/
-    (PYTHONPATH="lib/pyd7a" python2 gateway.py -d /dev/ttyACM0 > /var/log/d7-gateway.log) &
+    PYTHONPATH="lib/pyd7a" python2 gateway.py -d /dev/ttyACM0 -l /var/log/d7-gateway.log &
     ;;
   stop)
     echo "Stopping D7 gateway"
