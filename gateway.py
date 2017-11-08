@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import platform
 import socket
 import subprocess
 
@@ -93,6 +94,7 @@ class Gateway:
       )
 
   def load_plugins(self, plugin_path):
+    self.log.info("Searching for plugins in path %s" % plugin_path)
     manager = PluginManagerSingleton.get()
     manager.setPluginPlaces([plugin_path])
     manager.collectPlugins()
@@ -216,7 +218,10 @@ class Gateway:
     keep_running = True
     while keep_running:
       try:
-        signal.pause()
+        if platform.system() == "Windows":
+          time.sleep(1)
+        else:
+          signal.pause()
       except serial.SerialException:
         time.sleep(1)
         self.log.warning("resetting serial connection...")
