@@ -33,6 +33,8 @@ class Gateway:
     argparser.add_argument("-v", "--verbose", help="verbose", default=False, action="store_true")
     argparser.add_argument("-b", "--broker", help="mqtt broker hostname",
                            default="localhost")
+    argparser.add_argument("-bp", "--broker-port", help="mqtt broker port",
+                           default="1883")
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
                            default="")
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
@@ -158,12 +160,13 @@ class Gateway:
 
 
   def connect_to_mqtt(self):
+    self.log.info("Connecting to MQTT broker on {}".format(self.config.broker))
     self.connected_to_mqtt = False
     self.mq = mqtt.Client("", True, None, mqtt.MQTTv31)
     self.mqtt_topic_incoming_alp = "/DASH7/incoming/{}".format(self.modem.uid)
     self.mq.on_connect = self.on_mqtt_connect
     self.mq.on_message = self.on_mqtt_message
-    self.mq.connect(self.config.broker, 1883, 60)
+    self.mq.connect(self.config.broker, self.config.broker_port, 60)
     self.mq.loop_start()
     while not self.connected_to_mqtt: pass  # busy wait until connected
     self.log.info("Connected to MQTT broker on {}".format(self.config.broker))
