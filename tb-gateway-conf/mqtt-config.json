@@ -10,7 +10,7 @@
       },
       "mapping": [
         {
-          "topicFilter": "/parsed",
+          "topicFilter": "/parsed/telemetry",
           "converter": {
             "type": "json",
             "filterExpression": "",
@@ -18,7 +18,22 @@
             "timeseries": [
               {
                 "type": "double",
-                "key": "${$.attribute_name}",
+                "key": "${$.name}",
+                "value": "${$.value}"
+              }
+            ]
+          }
+        },
+        {
+          "topicFilter": "/parsed/attribute",
+          "converter": {
+            "type": "json",
+            "filterExpression": "",
+            "deviceNameJsonExpression": "${$.device}",
+            "attributes": [
+              {
+                "type": "string",
+                "key": "${$.name}",
                 "value": "${$.value}"
               }
             ]

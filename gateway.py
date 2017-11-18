@@ -6,6 +6,7 @@ import socket
 import subprocess
 
 from datetime import datetime
+from enum import Enum
 
 import jsonpickle
 import serial
@@ -23,6 +24,10 @@ from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
 
 import logging
+
+class DataPointType(Enum):
+  attribute = 0
+  telemetry = 1
 
 class Gateway:
   def __init__(self):
@@ -119,14 +124,14 @@ class Gateway:
     if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
       interface_status = cmd.interface_status.operand.interface_status
       node_id = '{:x}'.format(interface_status.addressee.id)
-      self.publish_to_topic("/parsed", jsonpickle.json.dumps({
+      self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
         "attribute_name": "link_budget",
         "value": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
-      self.publish_to_topic("/parsed", jsonpickle.json.dumps({
+      self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
         "attribute_name": "rx_level",
@@ -147,11 +152,11 @@ class Gateway:
           # try if plugin can parse this file
           parsed_by_plugin = False
           for plugin in PluginManagerSingleton.get().getAllPlugins():
-            for attribute_name, value in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data):
+            for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data):
               parsed_by_plugin = True
-              self.publish_to_topic("/parsed", jsonpickle.json.dumps({
+              self.publish_to_topic("/parsed/" + datapoint_type.name, jsonpickle.json.dumps({
                 "device": node_id,
-                "attribute_name": attribute_name,
+                "name": name,
                 "value": value,
               }))
           if not parsed_by_plugin:

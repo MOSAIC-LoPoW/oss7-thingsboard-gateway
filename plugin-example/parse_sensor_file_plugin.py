@@ -1,6 +1,9 @@
 from bitstring import ConstBitStream
 from yapsy.IPlugin import IPlugin
 
+from gateway import DataPointType
+
+
 class ParseSensorFilePlugin(IPlugin):
   def parse_file_data(self, file_offset, data):
     # filter on the file ID for instance
@@ -9,8 +12,8 @@ class ParseSensorFilePlugin(IPlugin):
       # note this is a generator function, so multiple values can be returned
       s = ConstBitStream(bytes=bytearray(data))
       sensor_value = s.read("int:8")
-      yield 'my-sensorvalue1', sensor_value
+      yield 'my-sensorvalue1', sensor_value, DataPointType.telemetry
       sensor_value = s.read("int:8")
-      yield 'my-sensorvalue2', sensor_value
+      yield 'my-sensorvalue2', sensor_value, DataPointType.telemetry
 
     return
