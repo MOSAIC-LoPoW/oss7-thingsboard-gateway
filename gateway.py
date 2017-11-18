@@ -126,6 +126,15 @@ class Gateway:
         "value": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
+      self.publish_to_topic("/parsed", jsonpickle.json.dumps({
+        "gateway": self.modem.uid,
+        "device": node_id,
+        "attribute_name": "rx_level",
+        "value": - interface_status.rx_level,
+        "timestamp": str(datetime.now())
+      }))
+
+
 
     # store returned file data as attribute on the device
     for action in cmd.actions:
