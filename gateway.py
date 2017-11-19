@@ -124,14 +124,14 @@ class Gateway:
     if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
       interface_status = cmd.interface_status.operand.interface_status
       node_id = '{:x}'.format(interface_status.addressee.id)
-      self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
+      self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
         "name": "link_budget",
         "value": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
-      self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
+      self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
         "name": "rx_level",
