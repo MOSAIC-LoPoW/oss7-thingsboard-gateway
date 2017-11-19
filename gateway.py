@@ -127,14 +127,14 @@ class Gateway:
       self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
-        "attribute_name": "link_budget",
+        "name": "link_budget",
         "value": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
       self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
-        "attribute_name": "rx_level",
+        "name": "rx_level",
         "value": - interface_status.rx_level,
         "timestamp": str(datetime.now())
       }))
