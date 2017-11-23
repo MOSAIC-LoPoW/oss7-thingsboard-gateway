@@ -133,7 +133,7 @@
       "serverSideRpc": [
         {
           "deviceNameFilter": ".*",
-          "methodFilter": "execute-alp-async",
+          "methodFilter": ".*",
           "requestTopicExpression": "sensor/${deviceName}/request/${methodName}/${requestId}",
           "valueExpression": "${params}"
         }

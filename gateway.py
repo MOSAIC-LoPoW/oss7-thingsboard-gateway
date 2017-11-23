@@ -18,7 +18,11 @@ import signal
 from yapsy.PluginManager import PluginManagerSingleton
 
 from d7a.alp.command import Command
+from d7a.alp.interface import InterfaceType
 from d7a.alp.operations.responses import ReturnFileData
+from d7a.d7anp.addressee import Addressee, IdType
+from d7a.sp.configuration import Configuration
+from d7a.sp.qos import ResponseMode, QoS
 from d7a.system_files.system_file_ids import SystemFileIds
 from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
@@ -91,7 +95,7 @@ class Gateway:
       "serialNumber": self.modem.uid
     }))
 
-    self.log.info("Running on {} with git rev {}".format(ip, git_sha))
+    self.log.info("Running on {} with git rev {} using modem {}".format(ip, git_sha, self.modem.uid))
 
     # read all system files on the local node to store as attributes on TB
     self.log.info("Reading all system files ...")
@@ -199,20 +203,49 @@ class Gateway:
       self.log.info("RPC command not for this modem ({}), skipping", self.modem.uid)
       return
 
-    if method != "execute-alp-async":
+    if method == "execute-alp-async":
+      try:
+        cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
+        self.log.info("Received command through RPC: %s" % cmd)
+
+        self.modem.execute_command_async(cmd)
+        self.log.info("Executed ALP command through RPC")
+
+        # TODO when the command is writing local files we could read them again automatically afterwards, to make sure the digital twin is updated
+      except Exception as e:
+        self.log.exception("Could not deserialize: %s" % e)
+    elif method == "alert":
+      # TODO needs refactoring so different methods can be supported in a plugin, for now this is very specific case as an example
+      self.log.info("Alert (payload={})".format(msg.payload))
+      if msg.payload != "true" and msg.payload != "false":
+        self.log.info("invalid payload, skipping")
+        return
+
+      file_data = 0
+      if msg.payload == "true":
+        file_data = 1
+
+      self.log.info("writing alert file")
+      self.modem.execute_command_async(
+        Command.create_with_write_file_action(
+          file_id=0x60,
+          offset=5,
+          data=[file_data],
+          interface_type=InterfaceType.D7ASP,
+          interface_configuration=Configuration(
+            qos=QoS(resp_mod=ResponseMode.RESP_MODE_ALL),
+            addressee=Addressee(
+              access_class=0x11,
+              id_type=IdType.NOID
+            )
+          )
+        )
+      )
+
+    else:
       self.log.info("RPC method not supported, skipping")
       return
 
-    try:
-      cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
-      self.log.info("Received command through RPC: %s" % cmd)
-
-      self.modem.execute_command_async(cmd)
-      self.log.info("Executed ALP command through RPC")
-
-      # TODO when the command is writing local files we could read them again automatically afterwards, to make sure the digital twin is updated
-    except Exception as e:
-      self.log.exception("Could not deserialize: %s" % e)
 
   def publish_to_topic(self, topic, msg):
     if not self.connected_to_mqtt:
