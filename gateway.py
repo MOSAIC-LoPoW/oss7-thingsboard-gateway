@@ -232,7 +232,7 @@ class Gateway:
         self.modem.execute_command_async(
           Command.create_with_write_file_action(
             file_id=0x60,
-            offset=5,
+            offset=4,
             data=[file_data],
             interface_type=InterfaceType.D7ASP,
             interface_configuration=Configuration(
