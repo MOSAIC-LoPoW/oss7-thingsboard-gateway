@@ -137,6 +137,7 @@ class Gateway:
         "value": interface_status.link_budget,
         "timestamp": str(datetime.now())
       }))
+
       self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
         "gateway": self.modem.uid,
         "device": node_id,
@@ -145,7 +146,11 @@ class Gateway:
         "timestamp": str(datetime.now())
       }))
 
-
+      self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
+        "device": node_id,
+        "name": "last-network-connection",
+        "value": "D7-" + interface_status.get_short_channel_string(),
+      }))
 
     # store returned file data as attribute on the device
     for action in cmd.actions:
