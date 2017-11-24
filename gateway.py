@@ -116,72 +116,78 @@ class Gateway:
       self.log.info("Loading plugin '%s'" % plugin.name)
 
   def on_command_received(self, cmd):
-    self.log.info("Command received: {}".format(cmd))
-    if not self.connected_to_mqtt:
-      self.log.warning("Not connected to MQTT, skipping")
-      return
+    try:
+      self.log.info("Command received: {}".format(cmd))
+      if not self.connected_to_mqtt:
+        self.log.warning("Not connected to MQTT, skipping")
+        return
 
-    # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
-    # so pass it as an opaque BLOB for parsing in backend
-    self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.json.dumps({'alp_command': jsonpickle.encode(cmd)}))
+      # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
+      # so pass it as an opaque BLOB for parsing in backend
+      self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.json.dumps({'alp_command': jsonpickle.encode(cmd)}))
 
-    node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
-    # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
-    if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
-      interface_status = cmd.interface_status.operand.interface_status
-      node_id = '{:x}'.format(interface_status.addressee.id)
-      self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
-        "gateway": self.modem.uid,
-        "device": node_id,
-        "name": "link_budget",
-        "value": interface_status.link_budget,
-        "timestamp": str(datetime.now())
-      }))
+      node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
+      # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
+      if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
+        interface_status = cmd.interface_status.operand.interface_status
+        node_id = '{:x}'.format(interface_status.addressee.id)
+        self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
+          "gateway": self.modem.uid,
+          "device": node_id,
+          "name": "link_budget",
+          "value": interface_status.link_budget,
+          "timestamp": str(datetime.now())
+        }))
 
-      self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
-        "gateway": self.modem.uid,
-        "device": node_id,
-        "name": "rx_level",
-        "value": - interface_status.rx_level,
-        "timestamp": str(datetime.now())
-      }))
+        self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
+          "gateway": self.modem.uid,
+          "device": node_id,
+          "name": "rx_level",
+          "value": - interface_status.rx_level,
+          "timestamp": str(datetime.now())
+        }))
 
-      self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
-        "device": node_id,
-        "name": "last-network-connection",
-        "value": "D7-" + interface_status.get_short_channel_string(),
-      }))
+        self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
+          "device": node_id,
+          "name": "last-network-connection",
+          "value": "D7-" + interface_status.get_short_channel_string(),
+        }))
 
-    # store returned file data as attribute on the device
-    for action in cmd.actions:
-      if type(action.operation) is ReturnFileData:
-        data = ""
-        if action.operation.file_data_parsed is not None:
-          # for known system files we transmit the parsed data
-          data = jsonpickle.encode(action.operation.file_data_parsed)
-        else:
-          # try if plugin can parse this file
-          parsed_by_plugin = False
-          for plugin in PluginManagerSingleton.get().getAllPlugins():
-            for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data):
-              parsed_by_plugin = True
-              self.publish_to_topic("/parsed/" + datapoint_type.name, jsonpickle.json.dumps({
+      # store returned file data as attribute on the device
+      for action in cmd.actions:
+        if type(action.operation) is ReturnFileData:
+          data = ""
+          if action.operation.file_data_parsed is not None:
+            # for known system files we transmit the parsed data
+            data = jsonpickle.encode(action.operation.file_data_parsed)
+          else:
+            # try if plugin can parse this file
+            parsed_by_plugin = False
+            for plugin in PluginManagerSingleton.get().getAllPlugins():
+              for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.data):
+                parsed_by_plugin = True
+                self.publish_to_topic("/parsed/" + datapoint_type.name, jsonpickle.json.dumps({
+                  "device": node_id,
+                  "name": name,
+                  "value": value,
+                }))
+            if not parsed_by_plugin:
+              # unknown file content, just transmit raw data
+              data = jsonpickle.encode(action.operand)
+              filename = "File {}".format(action.operand.offset.id)
+              if action.operation.systemfile_type != None:
+                filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
+
+              self.publish_to_topic("/filecontent", jsonpickle.json.dumps({
                 "device": node_id,
-                "name": name,
-                "value": value,
+                "file-id": filename,
+                "file-data": data
               }))
-          if not parsed_by_plugin:
-            # unknown file content, just transmit raw data
-            data = jsonpickle.encode(action.operand)
-            filename = "File {}".format(action.operand.offset.id)
-            if action.operation.systemfile_type != None:
-              filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
-
-            self.publish_to_topic("/filecontent", jsonpickle.json.dumps({
-              "device": node_id,
-              "file-id": filename,
-              "file-data": data
-            }))
+    except:
+      exc_type, exc_value, exc_traceback = sys.exc_info()
+      lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+      trace = "".join(lines)
+      self.log.error("Exception while processing command: \n{}".format(trace))
 
 
   def connect_to_mqtt(self):
