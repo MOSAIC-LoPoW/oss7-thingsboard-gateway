@@ -149,7 +149,7 @@ class Gateway:
 
         self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
           "device": node_id,
-          "name": "last-network-connection",
+          "name": "last_network_connection",
           "value": "D7-" + interface_status.get_short_channel_string(),
         }))
 
