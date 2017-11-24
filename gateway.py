@@ -203,7 +203,7 @@ class Gateway:
       request_id = topic_parts[4]
       self.log.info("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
       if uid != self.modem.uid:
-        self.log.info("RPC command not for this modem ({}), skipping", self.modem.uid)
+        self.log.info("RPC command not for this modem ({}), skipping".format(self.modem.uid))
         return
 
       if method == "execute-alp-async":
@@ -252,8 +252,11 @@ class Gateway:
       exc_type, exc_value, exc_traceback = sys.exc_info()
       lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
       trace = "".join(lines)
-      self.log.error("Exception while processing MQTT message: {} callstack:\n{}".format(msg.__dict__, trace))
+      msg_info = "no msg info (missing __dict__ attribute)"  # TODO because of out of date paho??
+      if hasattr(msg, '__dict__'):
+        msg_info = str(msg.__dict__)
 
+      self.log.error("Exception while processing MQTT message: {} callstack:\n{}".format(msg_info, trace))
 
   def publish_to_topic(self, topic, msg):
     if not self.connected_to_mqtt:
