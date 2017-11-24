@@ -4,6 +4,7 @@ import argparse
 import platform
 import socket
 import subprocess
+import traceback
 
 from datetime import datetime
 from enum import Enum
@@ -15,6 +16,7 @@ import time
 import paho.mqtt.client as mqtt
 import signal
 
+import sys
 from yapsy.PluginManager import PluginManagerSingleton
 
 from d7a.alp.command import Command
@@ -194,57 +196,63 @@ class Gateway:
     self.connected_to_mqtt = True
 
   def on_mqtt_message(self, client, config, msg):
-    topic_parts = msg.topic.split('/')
-    method = topic_parts[3]
-    uid = topic_parts[1]
-    request_id = topic_parts[4]
-    self.log.info("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
-    if uid != self.modem.uid:
-      self.log.info("RPC command not for this modem ({}), skipping", self.modem.uid)
-      return
-
-    if method == "execute-alp-async":
-      try:
-        cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
-        self.log.info("Received command through RPC: %s" % cmd)
-
-        self.modem.execute_command_async(cmd)
-        self.log.info("Executed ALP command through RPC")
-
-        # TODO when the command is writing local files we could read them again automatically afterwards, to make sure the digital twin is updated
-      except Exception as e:
-        self.log.exception("Could not deserialize: %s" % e)
-    elif method == "alert":
-      # TODO needs refactoring so different methods can be supported in a plugin, for now this is very specific case as an example
-      self.log.info("Alert (payload={})".format(msg.payload))
-      if msg.payload != "true" and msg.payload != "false":
-        self.log.info("invalid payload, skipping")
+    try:
+      topic_parts = msg.topic.split('/')
+      method = topic_parts[3]
+      uid = topic_parts[1]
+      request_id = topic_parts[4]
+      self.log.info("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
+      if uid != self.modem.uid:
+        self.log.info("RPC command not for this modem ({}), skipping", self.modem.uid)
         return
 
-      file_data = 0
-      if msg.payload == "true":
-        file_data = 1
+      if method == "execute-alp-async":
+        try:
+          cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
+          self.log.info("Received command through RPC: %s" % cmd)
 
-      self.log.info("writing alert file")
-      self.modem.execute_command_async(
-        Command.create_with_write_file_action(
-          file_id=0x60,
-          offset=5,
-          data=[file_data],
-          interface_type=InterfaceType.D7ASP,
-          interface_configuration=Configuration(
-            qos=QoS(resp_mod=ResponseMode.RESP_MODE_ALL),
-            addressee=Addressee(
-              access_class=0x11,
-              id_type=IdType.NOID
+          self.modem.execute_command_async(cmd)
+          self.log.info("Executed ALP command through RPC")
+
+          # TODO when the command is writing local files we could read them again automatically afterwards, to make sure the digital twin is updated
+        except Exception as e:
+          self.log.exception("Could not deserialize: %s" % e)
+      elif method == "alert":
+        # TODO needs refactoring so different methods can be supported in a plugin, for now this is very specific case as an example
+        self.log.info("Alert (payload={})".format(msg.payload))
+        if msg.payload != "true" and msg.payload != "false":
+          self.log.info("invalid payload, skipping")
+          return
+
+        file_data = 0
+        if msg.payload == "true":
+          file_data = 1
+
+        self.log.info("writing alert file")
+        self.modem.execute_command_async(
+          Command.create_with_write_file_action(
+            file_id=0x60,
+            offset=5,
+            data=[file_data],
+            interface_type=InterfaceType.D7ASP,
+            interface_configuration=Configuration(
+              qos=QoS(resp_mod=ResponseMode.RESP_MODE_ALL),
+              addressee=Addressee(
+                access_class=0x11,
+                id_type=IdType.NOID
+              )
             )
           )
         )
-      )
 
-    else:
-      self.log.info("RPC method not supported, skipping")
-      return
+      else:
+        self.log.info("RPC method not supported, skipping")
+        return
+    except:
+      exc_type, exc_value, exc_traceback = sys.exc_info()
+      lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+      trace = "".join(lines)
+      self.log.error("Exception while processing MQTT message: {} callstack:\n{}".format(msg.__dict__, trace))
 
 
   def publish_to_topic(self, topic, msg):
