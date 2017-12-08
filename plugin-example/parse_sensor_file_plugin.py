@@ -5,7 +5,7 @@ from gateway import DataPointType
 
 
 class ParseSensorFilePlugin(IPlugin):
-  def parse_file_data(self, file_offset, data):
+  def parse_file_data(self, file_offset, length, data):
     # filter on the file ID for instance
     if file_offset.id == 64:
       # parse the data, in this example we are assuming the file data contains 2 sensor values of type int8
