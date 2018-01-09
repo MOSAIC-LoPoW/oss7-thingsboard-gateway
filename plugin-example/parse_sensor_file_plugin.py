@@ -11,7 +11,7 @@ class ParseSensorFilePlugin(IPlugin):
       # parse the data, in this example we are assuming the file data contains a temperature value in decicelsius
       # stored as int16, as transmitted by the sensor examples of OSS-7
       s = ConstBitStream(bytes=bytearray(data))
-      sensor_value = s.read("uintle:16") / 10.0
+      sensor_value = s.read("uintbe:16") / 10.0
       yield 'temperature', sensor_value, DataPointType.telemetry
       # note this is a generator function, so multiple values can be returned
 
