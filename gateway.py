@@ -5,17 +5,11 @@ import platform
 import socket
 import subprocess
 import traceback
-
-from datetime import datetime
 from enum import Enum
-
 import jsonpickle
 import serial
 import time
-
-import paho.mqtt.client as mqtt
 import signal
-
 import sys
 from yapsy.PluginManager import PluginManagerSingleton
 
@@ -28,6 +22,8 @@ from d7a.sp.qos import ResponseMode, QoS
 from d7a.system_files.system_file_ids import SystemFileIds
 from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
+
+from thingsboard import Thingsboard
 
 import logging
 
@@ -42,10 +38,13 @@ class Gateway:
                            default="/dev/ttyACM0")
     argparser.add_argument("-r", "--rate", help="baudrate for serial device", type=int, default=115200)
     argparser.add_argument("-v", "--verbose", help="verbose", default=False, action="store_true")
-    argparser.add_argument("-b", "--broker", help="mqtt broker hostname",
-                           default="localhost")
     argparser.add_argument("-bp", "--broker-port", help="mqtt broker port",
                            default="1883")
+
+    argparser.add_argument("-t", "--token", help="Access token for the TB gateway")
+    argparser.add_argument("-tb", "--thingsboard", help="Your Thingsboard URL",
+                           default="thingsboard.idlab.uantwerpen.be")
+
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
                            default="")
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
@@ -53,11 +52,9 @@ class Gateway:
 
     self.bridge_count = 0
     self.next_report = 0
-    self.mq = None
-    self.mqtt_topic_incoming_alp = ""
-    self.connected_to_mqtt = False
-
     self.config = argparser.parse_args()
+
+    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message)
 
     self.log = logging.getLogger()
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
@@ -76,26 +73,11 @@ class Gateway:
       self.load_plugins(self.config.plugin_path)
 
     self.modem = Modem(self.config.device, self.config.rate, self.on_command_received)
-    self.connect_to_mqtt()
 
     # update attribute containing git rev so we can track revision at TB platform
     git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
     ip = self.get_ip()
-    # TODO ideally this should be associated with the GW device itself, not with the modem in the GW
-    # not clear how to do this using TB-GW
-    self.publish_to_topic("/gateway-info", jsonpickle.json.dumps({
-      "git-rev": git_sha,
-      "ip": ip,
-      "device": self.modem.uid
-    }))
-
-    # make sure TB knows the modem device is connected. TB considers the device connected as well when there is regular
-    # telemetry data. This is fine for remote nodes which will be auto connected an disconnected in this way. But for the
-    # node in the gateway we do it explicitly to make sure it always is 'online' even when there is no telemetry to be transmitted,
-    # so that we can reach it over RPC
-    self.publish_to_topic("sensors/connect", jsonpickle.json.dumps({
-      "serialNumber": self.modem.uid
-    }))
+    self.tb.sendGwAttributes({'git-rev': git_sha, 'IP': ip})
 
     self.log.info("Running on {} with git rev {} using modem {}".format(ip, git_sha, self.modem.uid))
 
@@ -118,40 +100,26 @@ class Gateway:
   def on_command_received(self, cmd):
     try:
       self.log.info("Command received: {}".format(cmd))
-      if not self.connected_to_mqtt:
+
+      if not self.tb.connected_to_mqtt:
         self.log.warning("Not connected to MQTT, skipping")
         return
 
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
       # so pass it as an opaque BLOB for parsing in backend
-      self.publish_to_topic(self.mqtt_topic_incoming_alp, jsonpickle.json.dumps({'alp_command': jsonpickle.encode(cmd)}))
+      self.tb.sendGwAttributes({'last_alp_command': jsonpickle.encode(cmd)})
 
       node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
       # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
       if cmd.interface_status != None and cmd.interface_status.operand.interface_id == 0xd7:
         interface_status = cmd.interface_status.operand.interface_status
         node_id = '{:x}'.format(interface_status.addressee.id)
-        self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
-          "gateway": self.modem.uid,
-          "device": node_id,
-          "name": "link_budget",
-          "value": interface_status.link_budget,
-          "timestamp": str(datetime.now())
-        }))
-
-        self.publish_to_topic("/parsed/telemetry", jsonpickle.json.dumps({
-          "gateway": self.modem.uid,
-          "device": node_id,
-          "name": "rx_level",
-          "value": - interface_status.rx_level,
-          "timestamp": str(datetime.now())
-        }))
-
-        self.publish_to_topic("/parsed/attribute", jsonpickle.json.dumps({
-          "device": node_id,
-          "name": "last_network_connection",
-          "value": "D7-" + interface_status.get_short_channel_string(),
-        }))
+        linkBudget = interface_status.link_budget
+        rxLevel = interface_status.rx_level
+        lastConnect = "D7-" + interface_status.get_short_channel_string()
+        ts = int(round(time.time() * 1000))
+        self.tb.sendDeviceTelemetry(node_id, ts, {'link_budget': linkBudget, 'rx_level': rxLevel})
+        self.tb.sendDeviceAttributes(node_id, {'last_network_connection': lastConnect, 'last_gateway': self.modem.uid})
 
       # store returned file data as attribute on the device
       for action in cmd.actions:
@@ -166,45 +134,20 @@ class Gateway:
             for plugin in PluginManagerSingleton.get().getAllPlugins():
               for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.length, action.operand.data):
                 parsed_by_plugin = True
-                self.publish_to_topic("/parsed/" + datapoint_type.name, jsonpickle.json.dumps({
-                  "device": node_id,
-                  "name": name,
-                  "value": value,
-                }))
+                self.tb.sendDeviceAttributes(node_id, {name: value})
+
             if not parsed_by_plugin:
               # unknown file content, just transmit raw data
               data = jsonpickle.encode(action.operand)
               filename = "File {}".format(action.operand.offset.id)
               if action.operation.systemfile_type != None:
                 filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
-
-              self.publish_to_topic("/filecontent", jsonpickle.json.dumps({
-                "device": node_id,
-                "file-id": filename,
-                "file-data": data
-              }))
+                self.tb.sendDeviceAttributes(node_id, {filename: data})
     except:
       exc_type, exc_value, exc_traceback = sys.exc_info()
       lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
       trace = "".join(lines)
       self.log.error("Exception while processing command: \n{}".format(trace))
-
-
-  def connect_to_mqtt(self):
-    self.log.info("Connecting to MQTT broker on {}".format(self.config.broker))
-    self.connected_to_mqtt = False
-    self.mq = mqtt.Client("", True, None, mqtt.MQTTv31)
-    self.mqtt_topic_incoming_alp = "/DASH7/incoming/{}".format(self.modem.uid)
-    self.mq.on_connect = self.on_mqtt_connect
-    self.mq.on_message = self.on_mqtt_message
-    self.mq.connect(self.config.broker, self.config.broker_port, 60)
-    self.mq.loop_start()
-    while not self.connected_to_mqtt: pass  # busy wait until connected
-    self.log.info("Connected to MQTT broker on {}".format(self.config.broker))
-
-  def on_mqtt_connect(self, client, config, flags, rc):
-    self.mq.subscribe("sensor/#")
-    self.connected_to_mqtt = True
 
   def on_mqtt_message(self, client, config, msg):
     try:
@@ -268,15 +211,6 @@ class Gateway:
         msg_info = str(msg.__dict__)
 
       self.log.error("Exception while processing MQTT message: {} callstack:\n{}".format(msg_info, trace))
-
-  def publish_to_topic(self, topic, msg):
-    if not self.connected_to_mqtt:
-      self.log.warning("not connected to MQTT, skipping")
-      return
-
-    self.mq.publish(topic, msg)
-
-
 
   def __del__(self):
     try:
