@@ -104,14 +104,14 @@ class Gateway:
   def on_command_received(self, cmd):
     try:
       self.log.info("Command received: {}".format(cmd))
-
+      ts = int(round(time.time() * 1000))
       if not self.tb.connected_to_mqtt:
         self.log.warning("Not connected to MQTT, skipping")
         return
 
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
       # so pass it as an opaque BLOB for parsing in backend
-      self.tb.sendGwAttributes({'last_alp_command': jsonpickle.encode(cmd)})
+      self.tb.sendGwAttributes({'last_alp_command': jsonpickle.encode(cmd), 'last_seen': str(datetime.now())})
 
       node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
       # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
@@ -121,7 +121,7 @@ class Gateway:
         linkBudget = interface_status.link_budget
         rxLevel = interface_status.rx_level
         lastConnect = "D7-" + interface_status.get_short_channel_string()
-        ts = int(round(time.time() * 1000))
+
         self.tb.sendDeviceTelemetry(node_id, ts, {'link_budget': linkBudget, 'rx_level': rxLevel})
         self.tb.sendDeviceAttributes(node_id, {'last_network_connection': lastConnect, 'last_gateway': self.modem.uid})
 
@@ -147,6 +147,7 @@ class Gateway:
               if action.operation.systemfile_type != None:
                 filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
                 self.tb.sendDeviceAttributes(node_id, {filename: data})
+                self.tb.sendDeviceTelemetry(node_id, ts, {filename: data})
     except:
       exc_type, exc_value, exc_traceback = sys.exc_info()
       lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
