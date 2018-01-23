@@ -52,15 +52,13 @@ class Gateway:
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
                            default="")
 
-    self.gwReportTimeout = 5 #seconds
 
+    self.gwReportTimeout = 5 #seconds
     self.bridge_count = 0
     self.next_report = 0
     self.config = argparser.parse_args()
-
-    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message)
-
     self.log = logging.getLogger()
+
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     if self.config.logfile == "":
       handler = logging.StreamHandler()
@@ -72,6 +70,8 @@ class Gateway:
     self.log.setLevel(logging.INFO)
     if self.config.verbose:
       self.log.setLevel(logging.DEBUG)
+
+    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message)
 
     if self.config.plugin_path != "":
       self.load_plugins(self.config.plugin_path)
@@ -107,7 +107,7 @@ class Gateway:
       ts = int(round(time.time() * 1000))
       if not self.tb.connected_to_mqtt:
         self.log.warning("Not connected to MQTT, skipping")
-        return
+        self.tb.connectMqtt()
 
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
       # so pass it as an opaque BLOB for parsing in backend
@@ -138,7 +138,11 @@ class Gateway:
             for plugin in PluginManagerSingleton.get().getAllPlugins():
               for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.length, action.operand.data):
                 parsed_by_plugin = True
-                self.tb.sendDeviceAttributes(node_id, {name: value})
+                if isinstance(value, int) or isinstance(value, float):
+                  self.tb.sendDeviceTelemetry(node_id, ts, {name: value})
+                else:
+                  self.tb.sendDeviceAttributes(node_id, {name: value})
+
 
             if not parsed_by_plugin:
               # unknown file content, just transmit raw data
@@ -147,7 +151,7 @@ class Gateway:
               if action.operation.systemfile_type != None:
                 filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
                 self.tb.sendDeviceAttributes(node_id, {filename: data})
-                self.tb.sendDeviceTelemetry(node_id, ts, {filename: data})
+
     except:
       exc_type, exc_value, exc_traceback = sys.exc_info()
       lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
@@ -251,6 +255,9 @@ class Gateway:
 
   def gwReport(self):
     self.tb.sendGwAttributes({'last_seen': str(datetime.now())})
+    if not self.tb.connected_to_mqtt:
+      self.tb.connectMqtt()
+
     self.start_report_timer()
 
   def keep_stats(self):
@@ -262,7 +269,6 @@ class Gateway:
         self.log.info("bridged %s messages" % str(self.bridge_count))
         self.bridge_count = 0
       self.next_report = time.time() + 15  # report at most every 15 seconds
-
 
   def get_ip(self):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
