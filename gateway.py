@@ -9,6 +9,8 @@ from enum import Enum
 import jsonpickle
 import serial
 import time
+from datetime import datetime
+from threading import Timer
 import signal
 import sys
 from yapsy.PluginManager import PluginManagerSingleton
@@ -50,6 +52,8 @@ class Gateway:
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
                            default="")
 
+    self.gwReportTimeout = 5 #seconds
+
     self.bridge_count = 0
     self.next_report = 0
     self.config = argparser.parse_args()
@@ -77,7 +81,7 @@ class Gateway:
     # update attribute containing git rev so we can track revision at TB platform
     git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
     ip = self.get_ip()
-    self.tb.sendGwAttributes({'git-rev': git_sha, 'IP': ip})
+    self.tb.sendGwAttributes({'modem-uid': self.modem.uid, 'git-rev': git_sha, 'IP': ip})
 
     self.log.info("Running on {} with git rev {} using modem {}".format(ip, git_sha, self.modem.uid))
 
@@ -222,8 +226,10 @@ class Gateway:
   def run(self):
     self.log.info("Started")
     keep_running = True
+    self.start_report_timer()
     while keep_running:
       try:
+        self.log.info("Gateway report timer started")
         if platform.system() == "Windows":
           time.sleep(1)
         else:
@@ -239,6 +245,13 @@ class Gateway:
 
       self.report_stats()
 
+  def start_report_timer(self):
+    Timer(self.gwReportTimeout, self.gwReport, ()).start()
+
+  def gwReport(self):
+    self.tb.sendGwAttributes({'last_seen': str(datetime.now())})
+    self.start_report_timer()
+
   def keep_stats(self):
     self.bridge_count += 1
 
@@ -248,6 +261,7 @@ class Gateway:
         self.log.info("bridged %s messages" % str(self.bridge_count))
         self.bridge_count = 0
       self.next_report = time.time() + 15  # report at most every 15 seconds
+
 
   def get_ip(self):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
