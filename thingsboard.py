@@ -16,6 +16,7 @@ class Thingsboard():
             self.persistData = True
             self.gw_telemetry_queue = []
             self.device_telemetry_queue = []
+            #TODO: set maximum queue sizes
         else: self.persistData = False
 
         self.GATEWAY_ATTRIBUTES_TOPIC = "v1/gateway/attributes"
@@ -24,7 +25,7 @@ class Thingsboard():
         self.DEVICE_TELEMETRY_TOPIC = "v1/devices/me/telemetry"
 
     def connectMqtt(self):
-        self.mq = mqtt.Client("tb-gateway", clean_session=False)
+        self.mq = mqtt.Client()
         self.mq.username_pw_set(self.token)
         self.mq.on_connect = self.onMqttConnect()
         self.mq.on_disconnect = self.onMqttDisconnect
@@ -63,6 +64,7 @@ class Thingsboard():
             self.log.debug("Attributes sent to TB gateway")
         elif self.persistData:
             self.gw_telemetry_queue.append(values)
+            self.log.info("MQTT disconnected, telemetry added to queue")
 
     def sendDeviceAttributes(self, device, values):
         msg = "{{'{}': {}}}".format(device, values)
@@ -76,7 +78,7 @@ class Thingsboard():
             self.log.debug("Telemetry sent to TB device")
         elif self.persistData:
             self.device_telemetry_queue.append([device, timestamp, values])
-            self.log.debug("Telemetry added to queue")
+            self.log.info("MQTT disconnected, telemetry added to queue")
 
     def checkQueue(self):
         if len(self.device_telemetry_queue) == 0 and len(self.gw_telemetry_queue) == 0:

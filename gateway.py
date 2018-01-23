@@ -105,9 +105,6 @@ class Gateway:
     try:
       self.log.info("Command received: {}".format(cmd))
       ts = int(round(time.time() * 1000))
-      if not self.tb.connected_to_mqtt:
-        self.log.warning("Not connected to MQTT, skipping")
-        self.tb.connectMqtt()
 
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
       # so pass it as an opaque BLOB for parsing in backend
@@ -251,6 +248,7 @@ class Gateway:
       self.report_stats()
 
   def start_report_timer(self):
+    #TODO: this keeps running in background after SIGTERM?
     Timer(self.gwReportTimeout, self.gwReport, ()).start()
 
   def gwReport(self):
