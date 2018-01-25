@@ -51,6 +51,8 @@ class Gateway:
                            default="")
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
                            default="")
+    argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
+                           default=True)
 
 
     self.gwReportTimeout = 5 #seconds
@@ -71,7 +73,7 @@ class Gateway:
     if self.config.verbose:
       self.log.setLevel(logging.DEBUG)
 
-    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message)
+    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message, persistData=self.config.keep_data)
 
     if self.config.plugin_path != "":
       self.load_plugins(self.config.plugin_path)
@@ -129,6 +131,8 @@ class Gateway:
           if action.operation.file_data_parsed is not None:
             # for known system files we transmit the parsed data
             data = jsonpickle.encode(action.operation.file_data_parsed)
+            file_id = "file_" + str(action.operand.offset.id)
+            self.tb.sendGwAttributes({file_id: data})
           else:
             # try if plugin can parse this file
             parsed_by_plugin = False
