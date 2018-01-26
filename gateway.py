@@ -43,9 +43,8 @@ class Gateway:
     argparser.add_argument("-bp", "--broker-port", help="mqtt broker port",
                            default="1883")
 
-    argparser.add_argument("-t", "--token", help="Access token for the TB gateway")
-    argparser.add_argument("-tb", "--thingsboard", help="Your Thingsboard URL",
-                           default="thingsboard.idlab.uantwerpen.be")
+    argparser.add_argument("-t", "--token", help="Access token for the TB gateway", required=True)
+    argparser.add_argument("-tb", "--thingsboard", help="Thingsboard hostname/IP", default="localhost")
 
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
                            default="")
