@@ -36,18 +36,12 @@ class DataPointType(Enum):
 class Gateway:
   def __init__(self):
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("-d", "--device", help="serial device /dev file modem",
-                           default="/dev/ttyACM0")
+    argparser.add_argument("-d", "--device", help="serial device /dev file modem", default="/dev/ttyACM0")
     argparser.add_argument("-r", "--rate", help="baudrate for serial device", type=int, default=115200)
     argparser.add_argument("-v", "--verbose", help="verbose", default=False, action="store_true")
-    argparser.add_argument("-bp", "--broker-port", help="mqtt broker port",
-                           default="1883")
-
     argparser.add_argument("-t", "--token", help="Access token for the TB gateway", required=True)
     argparser.add_argument("-tb", "--thingsboard", help="Thingsboard hostname/IP", default="localhost")
-
-    argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored",
-                           default="")
+    argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored", default="")
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
                            default="")
     argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
