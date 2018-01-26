@@ -59,6 +59,7 @@ class Gateway:
     self.next_report = 0
     self.config = argparser.parse_args()
     self.log = logging.getLogger()
+    self.report_timer = Timer(self.gwReportTimeout, self.gwReport, ())
 
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     if self.config.logfile == "":
@@ -221,12 +222,6 @@ class Gateway:
 
       self.log.error("Exception while processing MQTT message: {} callstack:\n{}".format(msg_info, trace))
 
-  def __del__(self):
-    try:
-      self.mq.loop_stop()
-      self.mq.disconnect()
-    except:
-      pass
 
   def run(self):
     self.log.info("Started")
@@ -246,13 +241,15 @@ class Gateway:
         return
       except KeyboardInterrupt:
         self.log.info("received KeyboardInterrupt... stopping processing")
+        self.report_timer.cancel()
+        self.tb.disconnect()
         keep_running = False
 
       self.report_stats()
 
   def start_report_timer(self):
     #TODO: this keeps running in background after SIGTERM?
-    Timer(self.gwReportTimeout, self.gwReport, ()).start()
+    self.report_timer.start()
 
   def gwReport(self):
     self.tb.sendGwAttributes({'last_seen': str(datetime.now())})

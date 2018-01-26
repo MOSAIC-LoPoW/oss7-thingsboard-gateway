@@ -10,31 +10,30 @@ class Thingsboard():
         self.broker = broker
         self.token = token
         self.mqttCallback = mqttCallbackFunction
-        self.connectMqtt()
-
-        if persistData:
-            self.persistData = True
+        self.persistData = persistData
+        if self.persistData:
             self.gw_telemetry_queue = []
             self.device_telemetry_queue = []
             #TODO: set maximum queue sizes
-        else: self.persistData = False
+
+        self.connectMqtt()
 
         self.GATEWAY_ATTRIBUTES_TOPIC = "v1/gateway/attributes"
         self.GATEWAY_TELEMETRY_TOPIC = "v1/gateway/telemetry"
         self.DEVICE_ATTRIBUTES_TOPIC = "v1/devices/me/attributes"
         self.DEVICE_TELEMETRY_TOPIC = "v1/devices/me/telemetry"
+        self.log.info("ThingsBoard GW started")
 
     def connectMqtt(self):
         self.mq = mqtt.Client()
         self.mq.username_pw_set(self.token)
-        self.mq.on_connect = self.onMqttConnect()
+        self.mq.on_connect = self.onMqttConnect
         self.mq.on_disconnect = self.onMqttDisconnect
         self.mq.on_message = self.mqttCallback
         try:
             self.mq.connect(self.broker, 1883, 1)
             self.mq.loop_start()
             while not self.connected_to_mqtt: pass  # busy wait until connected
-            self.log.info("MQTT broker connected")
             if self.persistData and self.checkQueue():
                 for msg in self.gw_telemetry_queue: self.sendGwTelemetry(msg)
                 self.gw_telemetry_queue = []
@@ -44,9 +43,11 @@ class Thingsboard():
         except:
             self.log.warning("Failed to connect MQTT broker")
             self.connected_to_mqtt = False
+            raise
 
-    def onMqttConnect(self):
+    def onMqttConnect(self, client, userdata, flags_dict, rc):
         self.connected_to_mqtt = True
+        self.log.info("MQTT broker connected")
 
     def onMqttDisconnect(self, client, userdata, rc):
         self.connected_to_mqtt = False
@@ -85,9 +86,7 @@ class Thingsboard():
             return False
         else: return True
 
-    def __del__(self):
-        try:
-            self.mq.loop_stop()
-            self.mq.disconnect()
-        except:
-            pass
+    def disconnect(self):
+        self.log.info("Disconnecting from ThingsBoard")
+        self.mq.loop_stop()
+        self.mq.disconnect()
