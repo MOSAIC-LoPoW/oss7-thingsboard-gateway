@@ -59,7 +59,6 @@ class Gateway:
     self.next_report = 0
     self.config = argparser.parse_args()
     self.log = logging.getLogger()
-    self.report_timer = Timer(self.gwReportTimeout, self.gwReport, ())
 
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     if self.config.logfile == "":
@@ -249,13 +248,11 @@ class Gateway:
 
   def start_report_timer(self):
     #TODO: this keeps running in background after SIGTERM?
+    self.report_timer = Timer(self.gwReportTimeout, self.gwReport, ())
     self.report_timer.start()
 
   def gwReport(self):
     self.tb.sendGwAttributes({'last_seen': str(datetime.now())})
-    if not self.tb.connected_to_mqtt:
-      self.tb.connectMqtt()
-
     self.start_report_timer()
 
   def keep_stats(self):
