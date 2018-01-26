@@ -24,6 +24,8 @@ class Thingsboard():
         self.DEVICE_TELEMETRY_TOPIC = "v1/devices/me/telemetry"
         self.log.info("ThingsBoard GW started")
 
+    #TODO: Handle RPC commands from TB
+
     def connectMqtt(self):
         self.mq = mqtt.Client()
         self.mq.username_pw_set(self.token)

@@ -13,6 +13,7 @@ from datetime import datetime
 from threading import Timer
 import signal
 import sys
+import binascii
 from yapsy.PluginManager import PluginManagerSingleton
 
 from d7a.alp.command import Command
@@ -42,10 +43,13 @@ class Gateway:
     argparser.add_argument("-t", "--token", help="Access token for the TB gateway", required=True)
     argparser.add_argument("-tb", "--thingsboard", help="Thingsboard hostname/IP", default="localhost")
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored", default="")
+    argparser.add_argument("-bp", "--broker-port", help="mqtt broker port",
+                           default="1883")
     argparser.add_argument("-l", "--logfile", help="specify path if you want to log to file instead of to stdout",
                            default="")
     argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
                            default=True)
+    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", default=False)
 
 
     self.gwReportTimeout = 5 #seconds
@@ -66,6 +70,7 @@ class Gateway:
     if self.config.verbose:
       self.log.setLevel(logging.DEBUG)
 
+
     self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message, persistData=self.config.keep_data)
 
     if self.config.plugin_path != "":
@@ -73,10 +78,16 @@ class Gateway:
 
     self.modem = Modem(self.config.device, self.config.rate, self.on_command_received)
 
+    if self.config.save_bandwidth:
+      self.config.save_bandwidth = True
+      if self.config.plugin_path is not "":
+        self.log.warning("Save bandwidth mode is enabled, plugin files will not be used")
+    else: self.config.save_bandwidth = False
+
     # update attribute containing git rev so we can track revision at TB platform
     git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
     ip = self.get_ip()
-    self.tb.sendGwAttributes({'modem-uid': self.modem.uid, 'git-rev': git_sha, 'IP': ip})
+    self.tb.sendGwAttributes({'UID': self.modem.uid, 'git-rev': git_sha, 'IP': ip, 'save bw': str(self.config.save_bandwidth)})
 
     self.log.info("Running on {} with git rev {} using modem {}".format(ip, git_sha, self.modem.uid))
 
@@ -103,7 +114,11 @@ class Gateway:
 
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
       # so pass it as an opaque BLOB for parsing in backend
-      self.tb.sendGwAttributes({'last_alp_command': jsonpickle.encode(cmd), 'last_seen': str(datetime.now())})
+      if self.config.save_bandwidth:
+        self.tb.sendGwAttributes({'alp': binascii.hexlify(bytearray(cmd)), 'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
+        return
+
+      self.tb.sendGwAttributes({'alp': jsonpickle.encode(cmd), 'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
 
       node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
       # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
@@ -113,30 +128,30 @@ class Gateway:
         linkBudget = interface_status.link_budget
         rxLevel = interface_status.rx_level
         lastConnect = "D7-" + interface_status.get_short_channel_string()
-
-        self.tb.sendDeviceTelemetry(node_id, ts, {'link_budget': linkBudget, 'rx_level': rxLevel})
-        self.tb.sendDeviceAttributes(node_id, {'last_network_connection': lastConnect, 'last_gateway': self.modem.uid})
+        self.tb.sendDeviceTelemetry(node_id, ts, {'lb': linkBudget, 'rx': rxLevel})
+        self.tb.sendDeviceAttributes(node_id, {'last_conn': lastConnect, 'last_gw': self.modem.uid})
 
       # store returned file data as attribute on the device
       for action in cmd.actions:
         if type(action.operation) is ReturnFileData:
           data = ""
           if action.operation.file_data_parsed is not None:
-            # for known system files we transmit the parsed data
-            data = jsonpickle.encode(action.operation.file_data_parsed)
-            file_id = "file_" + str(action.operand.offset.id)
-            self.tb.sendGwAttributes({file_id: data})
+            if not self.config.save_bandwidth:
+              # for known system files we transmit the parsed data
+              data = jsonpickle.encode(action.operation.file_data_parsed)
+              file_id = "File {}".format(action.operand.offset.id)
+              self.tb.sendGwAttributes({file_id: data})
           else:
             # try if plugin can parse this file
             parsed_by_plugin = False
-            for plugin in PluginManagerSingleton.get().getAllPlugins():
-              for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.length, action.operand.data):
-                parsed_by_plugin = True
-                if isinstance(value, int) or isinstance(value, float):
-                  self.tb.sendDeviceTelemetry(node_id, ts, {name: value})
-                else:
-                  self.tb.sendDeviceAttributes(node_id, {name: value})
-
+            if not self.config.save_bandwidth:
+              for plugin in PluginManagerSingleton.get().getAllPlugins():
+                for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.length, action.operand.data):
+                  parsed_by_plugin = True
+                  if isinstance(value, int) or isinstance(value, float):
+                    self.tb.sendDeviceTelemetry(node_id, ts, {name: value})
+                  else:
+                    self.tb.sendDeviceAttributes(node_id, {name: value})
 
             if not parsed_by_plugin:
               # unknown file content, just transmit raw data
@@ -144,7 +159,8 @@ class Gateway:
               filename = "File {}".format(action.operand.offset.id)
               if action.operation.systemfile_type != None:
                 filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
-                self.tb.sendDeviceAttributes(node_id, {filename: data})
+              self.tb.sendDeviceAttributes(node_id, {filename: data})
+
 
     except:
       exc_type, exc_value, exc_traceback = sys.exc_info()
