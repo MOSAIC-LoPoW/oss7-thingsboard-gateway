@@ -13,7 +13,9 @@ class Thingsboard():
         self.persistData = persistData
         if self.persistData:
             self.gw_telemetry_queue = []
+            self.gw_attributes_queue = []
             self.device_telemetry_queue = []
+            self.device_attributes_queue = []
             #TODO: set maximum queue sizes
 
         self.connectMqtt()
@@ -41,6 +43,10 @@ class Thingsboard():
                 self.gw_telemetry_queue = []
                 for msg in self.device_telemetry_queue: self.sendDeviceTelemetry(msg[0], msg[1], msg[2])
                 self.device_telemetry_queue = []
+                for msg in self.gw_attributes_queue: self.sendGwAttributes(msg)
+                self.gw_attributes_queue = []
+                for msg in self.device_attributes_queue: self.sendDeviceAttributes(msg[0], msg[1])
+                self.device_attributes_queue = []
                 self.log.info("Queued messages sent to Thingsboard")
         except:
             self.log.warning("Failed to connect MQTT broker")
@@ -56,9 +62,13 @@ class Thingsboard():
         self.log.warning("MQTT broker disconnected")
 
     def sendGwAttributes(self, values):
-        msg = str(values)
-        self.mq.publish(self.DEVICE_ATTRIBUTES_TOPIC, msg, qos=1)
-        self.log.debug("Attributes sent to TB gateway")
+        if self.connected_to_mqtt:
+            msg = str(values)
+            self.mq.publish(self.DEVICE_ATTRIBUTES_TOPIC, msg, qos=1)
+            self.log.debug("Attributes sent to TB gateway")
+        else:
+            self.gw_attributes_queue.append(values)
+            self.log.info("MQTT disconnected, attributes added to queue")
 
     def sendGwTelemetry(self, values):
         if self.connected_to_mqtt:
@@ -70,9 +80,13 @@ class Thingsboard():
             self.log.info("MQTT disconnected, telemetry added to queue")
 
     def sendDeviceAttributes(self, device, values):
-        msg = "{{'{}': {}}}".format(device, values)
-        self.mq.publish(self.GATEWAY_ATTRIBUTES_TOPIC, msg, qos=1)
-        self.log.debug("Attributes sent to TB device")
+        if self.connected_to_mqtt:
+            msg = "{{'{}': {}}}".format(device, values)
+            self.mq.publish(self.GATEWAY_ATTRIBUTES_TOPIC, msg, qos=1)
+            self.log.debug("Attributes sent to TB device")
+        else:
+            self.device_attributes_queue.append([device, values])
+            self.log.info("MQTT disconnected, attributes added to queue")
 
     def sendDeviceTelemetry(self, device, timestamp, values):
         if self.connected_to_mqtt:
