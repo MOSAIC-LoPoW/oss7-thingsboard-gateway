@@ -7,6 +7,7 @@ import subprocess
 import traceback
 from enum import Enum
 import jsonpickle
+import json
 import serial
 import time
 from datetime import datetime
@@ -49,7 +50,7 @@ class Gateway:
                            default="")
     argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
                            default=True)
-    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", default=True)
+    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", default=False)
 
 
     self.bridge_count = 0
@@ -168,18 +169,18 @@ class Gateway:
 
   def on_mqtt_message(self, client, config, msg):
     try:
-      topic_parts = msg.topic.split('/')
-      method = topic_parts[3]
-      uid = topic_parts[1]
-      request_id = topic_parts[4]
+      payload = json.loads(msg.payload)
+      uid = payload['device']
+      method = payload['data']['method']
+      request_id = payload['data']['id']
       self.log.info("Received RPC command of type {} for {} (request id {})".format(method, uid, request_id))
-      if uid != self.modem.uid:
-        self.log.info("RPC command not for this modem ({}), skipping".format(self.modem.uid))
-        return
+      # if uid != self.modem.uid:
+      #   self.log.info("RPC command not for this modem ({}), skipping".format(self.modem.uid))
+      #   return
 
       if method == "execute-alp-async":
         try:
-          cmd = jsonpickle.decode(jsonpickle.json.loads(msg.payload))
+          cmd = payload['data']['params']
           self.log.info("Received command through RPC: %s" % cmd)
 
           self.modem.execute_command_async(cmd)

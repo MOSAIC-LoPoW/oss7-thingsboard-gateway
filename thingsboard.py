@@ -26,8 +26,10 @@ class Thingsboard():
 
         self.GATEWAY_ATTRIBUTES_TOPIC = "v1/gateway/attributes"
         self.GATEWAY_TELEMETRY_TOPIC = "v1/gateway/telemetry"
+        self.GATEWAY_RPC_TOPIC = "v1/gateway/rpc"
         self.DEVICE_ATTRIBUTES_TOPIC = "v1/devices/me/attributes"
         self.DEVICE_TELEMETRY_TOPIC = "v1/devices/me/telemetry"
+
         self.log.info("ThingsBoard GW started")
 
     #TODO: Handle RPC commands from TB
@@ -38,31 +40,21 @@ class Thingsboard():
         self.mq.on_connect = self.onMqttConnect
         self.mq.on_disconnect = self.onMqttDisconnect
         self.mq.on_message = self.mqttCallback
+        self.mq.subscribe("v1/gateway/rpc", qos=1)
         try:
             self.mq.connect(self.broker, 1883, 1)
             self.mq.loop_start()
             while not self.connected_to_mqtt: pass  # busy wait until connected
-            if self.persistData and self.checkQueue():
-                self.flushQueues()
         except:
             self.log.warning("Failed to connect MQTT broker")
             self.connected_to_mqtt = False
             raise
 
-    def reconnectMqtt(self):
-        try:
-            self.mq.reconnect()
-            self.connected_to_mqtt = True
-            self.log.info("MQTT reconnected")
-            if self.persistData and self.checkQueue():
-                self.flushQueues()
-        except:
-            self.log.warning("Failed to reconnect MQTT broker")
-            self.connected_to_mqtt = False
-
     def onMqttConnect(self, client, userdata, flags_dict, rc):
         self.connected_to_mqtt = True
         self.log.info("MQTT broker connected")
+        if self.persistData and self.checkQueue():
+            self.flushQueues()
 
     def onMqttDisconnect(self, client, userdata, rc):
         self.connected_to_mqtt = False
@@ -123,8 +115,6 @@ class Thingsboard():
     def start_report_timer(self):
         self.report_timer = Timer(self.gwReportTimeout, self.gwReport, ())
         self.report_timer.start()
-        if not self.connected_to_mqtt:
-            self.reconnectMqtt()
 
     def gwReport(self):
         self.sendGwAttributes({'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
