@@ -49,10 +49,9 @@ class Gateway:
                            default="")
     argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
                            default=True)
-    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", default=False)
+    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", default=True)
 
 
-    self.gwReportTimeout = 5 #seconds
     self.bridge_count = 0
     self.next_report = 0
     self.config = argparser.parse_args()
@@ -69,7 +68,6 @@ class Gateway:
     self.log.setLevel(logging.INFO)
     if self.config.verbose:
       self.log.setLevel(logging.DEBUG)
-
 
     self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message, persistData=self.config.keep_data)
 
@@ -235,7 +233,6 @@ class Gateway:
   def run(self):
     self.log.info("Started")
     keep_running = True
-    self.start_report_timer()
     while keep_running:
       try:
         self.log.info("Gateway report timer started")
@@ -250,20 +247,10 @@ class Gateway:
         return
       except KeyboardInterrupt:
         self.log.info("received KeyboardInterrupt... stopping processing")
-        self.report_timer.cancel()
         self.tb.disconnect()
         keep_running = False
 
       self.report_stats()
-
-  def start_report_timer(self):
-    #TODO: this keeps running in background after SIGTERM?
-    self.report_timer = Timer(self.gwReportTimeout, self.gwReport, ())
-    self.report_timer.start()
-
-  def gwReport(self):
-    self.tb.sendGwAttributes({'last_seen': str(datetime.now())})
-    self.start_report_timer()
 
   def keep_stats(self):
     self.bridge_count += 1

@@ -1,10 +1,13 @@
 import logging
 import paho.mqtt.client as mqtt
+from threading import Timer
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class Thingsboard():
     def __init__(self, broker, token, mqttCallbackFunction, persistData=True):
+        self.gwReportTimeout = 5  # seconds
         self.log = logger
         self.connected_to_mqtt = False
         self.broker = broker
@@ -16,9 +19,10 @@ class Thingsboard():
             self.gw_attributes_queue = []
             self.device_telemetry_queue = []
             self.device_attributes_queue = []
-            #TODO: set maximum queue sizes
+            #TODO: set maximum queue sizes?
 
         self.connectMqtt()
+        self.start_report_timer()
 
         self.GATEWAY_ATTRIBUTES_TOPIC = "v1/gateway/attributes"
         self.GATEWAY_TELEMETRY_TOPIC = "v1/gateway/telemetry"
@@ -39,19 +43,22 @@ class Thingsboard():
             self.mq.loop_start()
             while not self.connected_to_mqtt: pass  # busy wait until connected
             if self.persistData and self.checkQueue():
-                for msg in self.gw_telemetry_queue: self.sendGwTelemetry(msg)
-                self.gw_telemetry_queue = []
-                for msg in self.device_telemetry_queue: self.sendDeviceTelemetry(msg[0], msg[1], msg[2])
-                self.device_telemetry_queue = []
-                for msg in self.gw_attributes_queue: self.sendGwAttributes(msg)
-                self.gw_attributes_queue = []
-                for msg in self.device_attributes_queue: self.sendDeviceAttributes(msg[0], msg[1])
-                self.device_attributes_queue = []
-                self.log.info("Queued messages sent to Thingsboard")
+                self.flushQueues()
         except:
             self.log.warning("Failed to connect MQTT broker")
             self.connected_to_mqtt = False
             raise
+
+    def reconnectMqtt(self):
+        try:
+            self.mq.reconnect()
+            self.connected_to_mqtt = True
+            self.log.info("MQTT reconnected")
+            if self.persistData and self.checkQueue():
+                self.flushQueues()
+        except:
+            self.log.warning("Failed to reconnect MQTT broker")
+            self.connected_to_mqtt = False
 
     def onMqttConnect(self, client, userdata, flags_dict, rc):
         self.connected_to_mqtt = True
@@ -98,11 +105,33 @@ class Thingsboard():
             self.log.info("MQTT disconnected, telemetry added to queue")
 
     def checkQueue(self):
-        if len(self.device_telemetry_queue) == 0 and len(self.gw_telemetry_queue) == 0:
+        if not self.device_telemetry_queue and not self.gw_telemetry_queue and not self.device_attributes_queue and not self.gw_attributes_queue:
             return False
         else: return True
+
+    def flushQueues(self):
+        for msg in self.gw_telemetry_queue: self.sendGwTelemetry(msg)
+        self.gw_telemetry_queue = []
+        for msg in self.device_telemetry_queue: self.sendDeviceTelemetry(msg[0], msg[1], msg[2])
+        self.device_telemetry_queue = []
+        for msg in self.gw_attributes_queue: self.sendGwAttributes(msg)
+        self.gw_attributes_queue = []
+        for msg in self.device_attributes_queue: self.sendDeviceAttributes(msg[0], msg[1])
+        self.device_attributes_queue = []
+        self.log.info("Queued messages sent to Thingsboard")
+
+    def start_report_timer(self):
+        self.report_timer = Timer(self.gwReportTimeout, self.gwReport, ())
+        self.report_timer.start()
+        if not self.connected_to_mqtt:
+            self.reconnectMqtt()
+
+    def gwReport(self):
+        self.sendGwAttributes({'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
+        self.start_report_timer()
 
     def disconnect(self):
         self.log.info("Disconnecting from ThingsBoard")
         self.mq.loop_stop()
+        self.report_timer.cancel()
         self.mq.disconnect()
