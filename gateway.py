@@ -76,12 +76,28 @@ class Gateway:
       self.load_plugins(self.config.plugin_path)
 
     self.modem = Modem(self.config.device, self.config.rate, self.on_command_received)
+    connected = self.modem.connect()
+    while not connected:
+      try:
+        self.log.warning("Not connected to modem, retrying ...")
+        time.sleep(1)
+        connected = self.modem.connect()
+      except KeyboardInterrupt:
+        self.log.info("received KeyboardInterrupt... stopping")
+        self.tb.disconnect()
+        exit(-1)
+      except:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        trace = "".join(lines)
+        self.log.error("Exception while connecting modem: \n{}".format(trace))
 
     if self.config.save_bandwidth:
       self.config.save_bandwidth = True
       if self.config.plugin_path is not "":
         self.log.warning("Save bandwidth mode is enabled, plugin files will not be used")
-    else: self.config.save_bandwidth = False
+    else:
+      self.config.save_bandwidth = False
 
     # update attribute containing git rev so we can track revision at TB platform
     git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
@@ -236,16 +252,10 @@ class Gateway:
     keep_running = True
     while keep_running:
       try:
-        self.log.info("Gateway report timer started")
         if platform.system() == "Windows":
           time.sleep(1)
         else:
           signal.pause()
-      except serial.SerialException:
-        time.sleep(1)
-        self.log.warning("resetting serial connection...")
-        self.setup_modem()
-        return
       except KeyboardInterrupt:
         self.log.info("received KeyboardInterrupt... stopping processing")
         self.tb.disconnect()
