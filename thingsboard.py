@@ -21,7 +21,11 @@ class Thingsboard():
             self.device_attributes_queue = []
             #TODO: set maximum queue sizes?
 
-        self.connectMqtt()
+        try:
+            self.connectMqtt()
+        except:
+            self.log.warning("Can't connect to MQTT broker")
+
         self.start_report_timer()
 
         self.GATEWAY_ATTRIBUTES_TOPIC = "v1/gateway/attributes"
@@ -118,6 +122,11 @@ class Thingsboard():
 
     def gwReport(self):
         self.sendGwAttributes({'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
+        if self.connected_to_mqtt is False:
+            try:
+                self.connectMqtt()
+            except:
+                self.log.debug("Could not connect to MQTT broker...")
         self.start_report_timer()
 
     def disconnect(self):
@@ -125,3 +134,4 @@ class Thingsboard():
         self.mq.loop_stop()
         self.report_timer.cancel()
         self.mq.disconnect()
+
