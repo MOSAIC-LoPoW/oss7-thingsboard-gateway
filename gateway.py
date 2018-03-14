@@ -51,6 +51,7 @@ class Gateway:
     argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
                            default=True)
     argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", action="store_true")
+    argparser.add_argument("-sf", "--skip-system-files", help="Do not read system files on boot", action="store_true")
 
     self.bridge_count = 0
     self.next_report = 0
@@ -104,11 +105,12 @@ class Gateway:
     self.log.info("Running on {} with git rev {} using modem {}".format(ip, git_sha, self.modem.uid))
 
     # read all system files on the local node to store as attributes on TB
-    self.log.info("Reading all system files ...")
-    for file in SystemFiles().files.values():
-      self.modem.execute_command_async(
-        Command.create_with_read_file_action_system_file(file)
-      )
+    if not self.config.skip_system_files:
+      self.log.info("Reading all system files ...")
+      for file in SystemFiles().files.values():
+        self.modem.execute_command_async(
+          Command.create_with_read_file_action_system_file(file)
+        )
 
   def load_plugins(self, plugin_path):
     self.log.info("Searching for plugins in path %s" % plugin_path)
