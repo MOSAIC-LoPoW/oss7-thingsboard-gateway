@@ -23,6 +23,7 @@ from d7a.alp.operations.responses import ReturnFileData
 from d7a.d7anp.addressee import Addressee, IdType
 from d7a.sp.configuration import Configuration
 from d7a.sp.qos import ResponseMode, QoS
+from d7a.system_files.dll_config import DllConfigFile
 from d7a.system_files.system_file_ids import SystemFileIds
 from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
@@ -91,6 +92,10 @@ class Gateway:
         lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
         trace = "".join(lines)
         self.log.error("Exception while connecting modem: \n{}".format(trace))
+
+    # switch to continuous foreground scan access profile
+    self.modem.execute_command(
+      Command.create_with_write_file_action_system_file(DllConfigFile(active_access_class=0x01)), timeout_seconds=1)
 
     if self.config.save_bandwidth:
       self.log.info("Running in save bandwidth mode")
