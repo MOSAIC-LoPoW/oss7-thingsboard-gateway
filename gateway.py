@@ -76,7 +76,7 @@ class Gateway:
     if self.config.plugin_path != "":
       self.load_plugins(self.config.plugin_path)
 
-    self.modem = Modem(self.config.device, self.config.rate, self.on_command_received)
+    self.modem = Modem(self.config.device, self.config.rate, self.on_command_received, self.config.save_bandwidth)
     connected = self.modem.connect()
     while not connected:
       try:
@@ -128,7 +128,11 @@ class Gateway:
 
   def on_command_received(self, cmd):
     try:
-      self.log.info("Command received: {}".format(cmd))
+      if self.config.save_bandwidth:
+        self.log.info("Command received: binary ALP (size {})".format(len(cmd)))
+      else:
+        self.log.info("Command received: {}".format(cmd))
+
       ts = int(round(time.time() * 1000))
 
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
