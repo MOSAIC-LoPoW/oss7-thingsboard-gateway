@@ -50,8 +50,7 @@ class Gateway:
                            default="")
     argparser.add_argument("-k", "--keep-data", help="Save data locally when Thingsboard is disconnected and send it when connection is restored.",
                            default=True)
-    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", default=False)
-
+    argparser.add_argument("-b", "--save-bandwidth", help="Send data in binary format to save bandwidth", action="store_true")
 
     self.bridge_count = 0
     self.next_report = 0
@@ -93,11 +92,9 @@ class Gateway:
         self.log.error("Exception while connecting modem: \n{}".format(trace))
 
     if self.config.save_bandwidth:
-      self.config.save_bandwidth = True
+      self.log.info("Running in save bandwidth mode")
       if self.config.plugin_path is not "":
         self.log.warning("Save bandwidth mode is enabled, plugin files will not be used")
-    else:
-      self.config.save_bandwidth = False
 
     # update attribute containing git rev so we can track revision at TB platform
     git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
