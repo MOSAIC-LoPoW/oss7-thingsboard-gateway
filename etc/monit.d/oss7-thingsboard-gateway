@@ -1,0 +1,5 @@
+CHECK PROCESS oss7-thingsboard-gateway 
+MATCHING "python2 gateway.py"
+START PROGRAM = "/bin/bash -c 'cd /opt/oss7-thingsboard-gateway && PYTHONPATH="lib/pyd7a" nohup python2 gateway.py $(cat /etc/oss7-thingsboard-gateway/gateway.conf) &'"
+STOP PROGRAM = "/bin/bash -c '/bin/ps -C "python2 gateway.py" -o pid=|xargs kill -9'"
+
