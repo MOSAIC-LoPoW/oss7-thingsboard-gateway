@@ -143,7 +143,7 @@ class Gateway:
       # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
       # so pass it as an opaque BLOB for parsing in backend
       if self.config.save_bandwidth:
-        self.tb.sendGwAttributes({'alp': binascii.hexlify(bytearray(cmd)), 'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
+        self.tb.sendGwAttributes({'alp': binascii.hexlify(bytearray(cmd))})
         return
 
       self.tb.sendGwAttributes({'alp': jsonpickle.encode(cmd), 'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
