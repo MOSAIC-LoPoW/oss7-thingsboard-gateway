@@ -71,7 +71,12 @@ class Gateway:
     if self.config.verbose:
       self.log.setLevel(logging.DEBUG)
 
-    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message, persistData=self.config.keep_data)
+    heartbeat_interval_seconds = 5
+    if self.config.save_bandwidth:
+      heartbeat_interval_seconds = 5 * 60
+
+    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message,
+                          persistData=self.config.keep_data, heartbeat_interval_seconds=heartbeat_interval_seconds)
 
     if self.config.plugin_path != "":
       self.load_plugins(self.config.plugin_path)

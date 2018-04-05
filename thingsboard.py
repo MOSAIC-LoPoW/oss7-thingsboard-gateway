@@ -6,8 +6,8 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class Thingsboard():
-    def __init__(self, broker, token, mqttCallbackFunction, persistData=True):
-        self.gwReportTimeout = 5  # seconds
+    def __init__(self, broker, token, mqttCallbackFunction, persistData=True, heartbeat_interval_seconds=5):
+        self.gwReportTimeout = heartbeat_interval_seconds
         self.log = logger
         self.connected_to_mqtt = False
         self.broker = broker
