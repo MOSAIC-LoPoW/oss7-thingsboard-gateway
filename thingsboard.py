@@ -46,7 +46,7 @@ class Thingsboard():
         self.mq.on_message = self.mqttCallback
         self.mq.subscribe("v1/gateway/rpc", qos=1)
         try:
-            self.mq.connect(self.broker, 1883, 1)
+            self.mq.connect(self.broker, 1883, keepalive=0)
             self.mq.loop_start()
             while not self.connected_to_mqtt: pass  # busy wait until connected
         except:
