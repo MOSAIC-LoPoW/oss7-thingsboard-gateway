@@ -29,6 +29,7 @@ from d7a.system_files.system_files import SystemFiles
 from modem.modem import Modem
 
 from thingsboard import Thingsboard
+from mqtt_class import Mqtt
 
 import logging
 
@@ -42,7 +43,10 @@ class Gateway:
     argparser.add_argument("-d", "--device", help="serial device /dev file modem", default="/dev/ttyACM0")
     argparser.add_argument("-r", "--rate", help="baudrate for serial device", type=int, default=115200)
     argparser.add_argument("-v", "--verbose", help="verbose", default=False, action="store_true")
-    argparser.add_argument("-t", "--token", help="Access token for the TB gateway", required=True)
+    argparser.add_argument("-m", "--mqtt-broker", help="MQTT broker to publish alp commands to", default="backend.idlab.uantwerpen.be")
+    argparser.add_argument("-mt", "--mqtt-topic", help="MQTT publish topic", default="/d7")
+    argparser.add_argument("-et", "--enable-thingsboard", help="Enable to forwarde data to TB", default=False)
+    argparser.add_argument("-t", "--token", help="Access token for the TB gateway", default=None)
     argparser.add_argument("-tb", "--thingsboard", help="Thingsboard hostname/IP", default="localhost")
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored", default="")
     argparser.add_argument("-bp", "--broker-port", help="mqtt broker port",
@@ -58,6 +62,8 @@ class Gateway:
     self.next_report = 0
     self.config = argparser.parse_args()
     self.log = logging.getLogger()
+
+    self.m = Mqtt(self.config.mqtt_broker, 1883)
 
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     if self.config.logfile == "":
@@ -75,8 +81,10 @@ class Gateway:
     if self.config.save_bandwidth:
       heartbeat_interval_seconds = 5 * 60
 
-    self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message,
-                          persistData=self.config.keep_data, heartbeat_interval_seconds=heartbeat_interval_seconds)
+    self.thingsboard_enabled = self.config.enable_thingsboard
+    if self.thingsboard_enabled:
+      self.tb = Thingsboard(self.config.thingsboard, self.config.token, self.on_mqtt_message,
+                            persistData=self.config.keep_data, heartbeat_interval_seconds=heartbeat_interval_seconds)
 
     if self.config.plugin_path != "":
       self.load_plugins(self.config.plugin_path)
@@ -90,7 +98,8 @@ class Gateway:
         connected = self.modem.connect()
       except KeyboardInterrupt:
         self.log.info("received KeyboardInterrupt... stopping")
-        self.tb.disconnect()
+        if self.thingsboard_enabled:
+          self.tb.disconnect()
         exit(-1)
       except:
         exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -110,7 +119,8 @@ class Gateway:
     # update attribute containing git rev so we can track revision at TB platform
     git_sha = subprocess.check_output(["git", "describe", "--always"]).strip()
     ip = self.get_ip()
-    self.tb.sendGwAttributes({'UID': self.modem.uid, 'git-rev': git_sha, 'IP': ip, 'save bw': str(self.config.save_bandwidth)})
+    if self.thingsboard_enabled:
+      self.tb.sendGwAttributes({'UID': self.modem.uid, 'git-rev': git_sha, 'IP': ip, 'save bw': str(self.config.save_bandwidth)})
 
     self.log.info("Running on {} with git rev {} using modem {}".format(ip, git_sha, self.modem.uid))
 
@@ -133,6 +143,7 @@ class Gateway:
 
   def on_command_received(self, cmd):
     try:
+      # publish raw ALP command to backend.idlab.uantwerpen.be MQTT broker
       if self.config.save_bandwidth:
         self.log.info("Command received: binary ALP (size {})".format(len(cmd)))
       else:
@@ -140,13 +151,16 @@ class Gateway:
 
       ts = int(round(time.time() * 1000))
 
-      # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
-      # so pass it as an opaque BLOB for parsing in backend
-      if self.config.save_bandwidth:
-        self.tb.sendGwAttributes({'alp': binascii.hexlify(bytearray(cmd))})
-        return
+      if self.thingsboard_enabled:
+        # publish raw ALP command to incoming ALP topic, we will not parse the file contents here (since we don't know how)
+        # so pass it as an opaque BLOB for parsing in backend
+        if self.config.save_bandwidth:
 
-      self.tb.sendGwAttributes({'alp': jsonpickle.encode(cmd), 'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
+          if self.thingsboard_enabled:
+            self.tb.sendGwAttributes({'alp': binascii.hexlify(bytearray(cmd))})
+          return
+
+        self.tb.sendGwAttributes({'alp': jsonpickle.encode(cmd), 'last_seen': str(datetime.now().strftime("%y-%m-%d %H:%M:%S"))})
 
       node_id = self.modem.uid # overwritten below with remote node ID when received over D7 interface
       # parse link budget (when this is received over D7 interface) and publish separately so we can visualize this in TB
@@ -156,8 +170,13 @@ class Gateway:
         linkBudget = interface_status.link_budget
         rxLevel = interface_status.rx_level
         lastConnect = "D7-" + interface_status.get_short_channel_string()
-        self.tb.sendDeviceTelemetry(node_id, ts, {'lb': linkBudget, 'rx': rxLevel})
-        self.tb.sendDeviceAttributes(node_id, {'last_conn': lastConnect, 'last_gw': self.modem.uid})
+        if self.thingsboard_enabled:
+          self.tb.sendDeviceTelemetry(node_id, ts, {'lb': linkBudget, 'rx': rxLevel})
+          self.tb.sendDeviceAttributes(node_id, {'last_conn': lastConnect, 'last_gw': self.modem.uid})
+
+      # publish raw ALP command to MQTT broker on topic "/d7/<node_id>/<gateway_id>"
+      if self.m.connected_to_mqtt:
+        self.m.publish_message(self.config.mqtt_topic + "/" + node_id + "/" + self.modem.uid, str(cmd))
 
       # store returned file data as attribute on the device
       for action in cmd.actions:
@@ -168,7 +187,8 @@ class Gateway:
               # for known system files we transmit the parsed data
               data = jsonpickle.encode(action.operation.file_data_parsed)
               file_id = "File {}".format(action.operand.offset.id)
-              self.tb.sendGwAttributes({file_id: data})
+              if self.thingsboard_enabled:
+                self.tb.sendGwAttributes({file_id: data})
           else:
             # try if plugin can parse this file
             parsed_by_plugin = False
@@ -177,9 +197,11 @@ class Gateway:
                 for name, value, datapoint_type in plugin.plugin_object.parse_file_data(action.operand.offset, action.operand.length, action.operand.data):
                   parsed_by_plugin = True
                   if isinstance(value, int) or isinstance(value, float):
-                    self.tb.sendDeviceTelemetry(node_id, ts, {name: value})
+                    if self.thingsboard_enabled:
+                      self.tb.sendDeviceTelemetry(node_id, ts, {name: value})
                   else:
-                    self.tb.sendDeviceAttributes(node_id, {name: value})
+                    if self.thingsboard_enabled:
+                      self.tb.sendDeviceAttributes(node_id, {name: value})
 
             if not parsed_by_plugin:
               # unknown file content, just transmit raw data
@@ -187,7 +209,8 @@ class Gateway:
               filename = "File {}".format(action.operand.offset.id)
               if action.operation.systemfile_type != None:
                 filename = "File {} ({})".format(SystemFileIds(action.operand.offset.id).name, action.operand.offset.id)
-              self.tb.sendDeviceAttributes(node_id, {filename: data})
+                if self.thingsboard_enabled:
+                  self.tb.sendDeviceAttributes(node_id, {filename: data})
 
 
     except:
@@ -271,7 +294,8 @@ class Gateway:
           signal.pause()
       except KeyboardInterrupt:
         self.log.info("received KeyboardInterrupt... stopping processing")
-        self.tb.disconnect()
+        if self.thingsboard_enabled:
+          self.tb.disconnect()
         keep_running = False
 
       self.report_stats()
