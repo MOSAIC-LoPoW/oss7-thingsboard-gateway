@@ -45,7 +45,7 @@ class Gateway:
     argparser.add_argument("-v", "--verbose", help="verbose", default=False, action="store_true")
     argparser.add_argument("-m", "--mqtt-broker", help="MQTT broker to publish alp commands to", default="backend.idlab.uantwerpen.be")
     argparser.add_argument("-mt", "--mqtt-topic", help="MQTT publish topic", default="/d7")
-    argparser.add_argument("-et", "--enable-thingsboard", help="Enable to forwarde data to TB", default=False)
+    argparser.add_argument("-et", "--enable-thingsboard", help="Enable to forward data to TB", default=False)
     argparser.add_argument("-t", "--token", help="Access token for the TB gateway", default=None)
     argparser.add_argument("-tb", "--thingsboard", help="Thingsboard hostname/IP", default="localhost")
     argparser.add_argument("-p", "--plugin-path", help="path where plugins are stored", default="")
@@ -176,7 +176,7 @@ class Gateway:
 
       # publish raw ALP command to MQTT broker on topic "/d7/<node_id>/<gateway_id>"
       if self.m.connected_to_mqtt:
-        self.m.publish_message(self.config.mqtt_topic + "/" + node_id + "/" + self.modem.uid, str(cmd))
+        self.m.publish_message(self.config.mqtt_topic + "/" + node_id + "/" + self.modem.uid, binascii.hexlify(bytearray(cmd)))
 
       # store returned file data as attribute on the device
       for action in cmd.actions:
